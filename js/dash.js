@@ -205,7 +205,7 @@
       u.pHold = ratio(u.hold, u.pend);
       var then = histPend(week, u.key, level, report), now = histPend(latest, u.key, level, report);
       u.change = then !== null && now !== null && week && latest && week.date !== latest.date ? u.pend - then : null;
-      u.growth = u.change !== null && then ? u.change / then : (u.change !== null ? 0 : null);
+      u.growth = u.change === null ? null : then ? u.change / then : (u.change > 0 ? 1 : 0);
       var top = null; stagesOf(report).forEach(function (s) { if (!top || u.st[s[0]] > u.st[top[0]]) top = s; });
       u.topStage = top && u.st[top[0]] > 0 ? top[1] : '-';
     });
@@ -279,6 +279,7 @@
   function render() {
     var M = S.model;
     if (M.reports.indexOf(S.report) < 0) S.report = M.reports[0];
+    if (S.discom !== 'ALL' && !M.recs.some(function (r) { return r.report === S.report && r.discom === S.discom; })) S.discom = 'ALL';
     var kind = kindOf(S.report), levels = LEVELS[kind].map(function (l) { return l[0]; });
     if (levels.indexOf(S.level) < 0) S.level = kind === 'nsc' ? 'division' : 'division';
     renderFilters();
@@ -297,14 +298,21 @@
     $('segReport').innerHTML = M.reports.map(function (r) {
       return '<button type="button" data-report="' + esc(r) + '" aria-pressed="' + (r === S.report) + '">' + esc(REPORT_NAME[r]) + '</button>';
     }).join('');
+    var has = {}; M.recs.forEach(function (r) { if (r.report === S.report) has[r.discom] = true; });
     $('segDiscom').innerHTML = [['ALL', 'Bihar'], ['NBPDCL', 'NBPDCL'], ['SBPDCL', 'SBPDCL']].map(function (d) {
-      return '<button type="button" data-discom="' + d[0] + '" aria-pressed="' + (d[0] === S.discom) + '">' + d[1] + '</button>';
+      var off = d[0] !== 'ALL' && !has[d[0]];
+      return '<button type="button" data-discom="' + d[0] + '" aria-pressed="' + (d[0] === S.discom) + '"' + (off ? ' disabled title="No figures for ' + d[0] + ' in this report"' : '') + '>' + d[1] + '</button>';
     }).join('');
     var secs = [['glance', 'At a glance'], ['stages', 'Stages'], ['critical', 'Critical units'], ['delay', 'Delay'],
       ['agency', kindOf(S.report) === 'lc' ? 'Agencies' : 'AMISP'], ['trend', 'Trend'], ['review', 'Review points'], ['gaps', 'Data gaps'], ['cancel', 'Cancellations']];
     $('jump').innerHTML = secs.map(function (s) { return '<a href="#' + s[0] + '">' + s[1] + '</a>'; }).join('');
   }
 
+  function sinceText() {
+    var from = Object.keys(S.model.meta).filter(function (k) { return k.split('|')[1] === S.report; })
+      .map(function (k) { return S.model.meta[k].periodFrom; }).filter(Boolean)[0];
+    return from ? 'since ' + String(from).replace(/-/g, ' ') : 'all registered';
+  }
   function scopeLabel() { return S.discom === 'ALL' ? 'Bihar (NBPDCL + SBPDCL)' : S.discom; }
 
   // ---- 1. at a glance
@@ -329,7 +337,7 @@
       return '<div class="key"><i style="background:' + STAGE_COLOURS[i] + '"></i><span>' + esc(s[1]) + '</span><span class="v">' + n(v) + '<span class="p">' + pct(ratio(v, t.pend), 0) + '</span></span></div>';
     }).join('');
     var kpis = [
-      ['Registered', n(t.reg), 'since Jan 2020'],
+      ['Registered', n(t.reg), sinceText()],
       [kind === 'nsc' ? 'Completed' : 'Service released', n(t.done), pct(ratio(t.done, t.reg)) + ' of registered'],
       kind === 'nsc' ? ['Completed within 15 days', pct(ratio(t.in15, t.done)), n(t.in15) + ' of ' + n(t.done)] : ['Waiting for meter', n((t.st.wo || 0) + (t.st.meter || 0)), 'work order + installation'],
       ['On hold', n(t.hold), pct(ratio(t.hold, t.pend)) + ' of pending'],
@@ -411,7 +419,7 @@
     });
     var shown = S.showAll ? list : list.slice(0, 25);
     var hasChange = units.some(function (u) { return u.change !== null; });
-    var cols = [['rank', 'Rank', 'r'], ['name', title(LEVELS[kind].filter(function (l) { return l[0] === S.level; })[0][1]), 'l'], ['sev', 'Severity', 'l'], ['score', 'Score', 'r'],
+    var cols = [['rank', 'Rank', 'r'], ['name', LEVELS[kind].filter(function (l) { return l[0] === S.level; })[0][1], 'l'], ['sev', 'Severity', 'l'], ['score', 'Score', 'r'],
       ['pend', 'Pending', 'r'], ['pPend', 'Pending %', 'r']]
       .concat(kind === 'nsc' ? [['pLate', 'Done after 15 days', 'r']] : [])
       .concat([['hold', 'On hold', 'r'], ['topStage', 'Main stage', 'l']])
@@ -620,7 +628,7 @@
     var rows = S.model.reports.map(function (rep) {
       var per = DISCOMS.map(function (d) { return [d, sumUp(scopeRecs(rep, d))]; }).filter(function (x) { return x[1].lines && (S.discom === 'ALL' || x[0] === S.discom); });
       return '<div class="hb"><div class="name"><b>' + esc(REPORT_NAME[rep]) + '</b><span>' + per.map(function (x) { return x[0] + ' ' + pct(ratio(x[1].canc, x[1].reg), 0); }).join(', ') + '</span></div>' +
-        '<div class="track">' + per.map(function (x) { return '<span style="width:' + (100 * ratio(x[1].canc, x[1].reg) / per.length) + '%;background:var(--' + (x[0] === 'NBPDCL' ? 'north' : 'south') + ')"></span>'; }).join('') + '</div>' +
+        '<div class="track">' + per.map(function (x) { return '<span style="width:' + (100 * (ratio(x[1].canc, x[1].reg) || 0) / per.length) + '%;background:var(--' + (x[0] === 'NBPDCL' ? 'north' : 'south') + ')"></span>'; }).join('') + '</div>' +
         '<div class="num">' + pct(ratio(per.reduce(function (s, x) { return s + x[1].canc; }, 0), per.reduce(function (s, x) { return s + x[1].reg; }, 0)), 0) + '<small>cancelled</small></div></div>';
     }).join('');
     var rep = S.model.reports.indexOf('NSC 19-59 kW') >= 0 ? 'NSC 19-59 kW' : S.report;
@@ -642,9 +650,8 @@
     box.querySelectorAll('[data-sev]').forEach(function (b) { b.addEventListener('click', function () { S.sev = b.dataset.sev; S.showAll = false; keepPlace('critical', render); }); });
     box.querySelectorAll('#critTable th[data-sort]').forEach(function (th) {
       th.addEventListener('click', function () {
-        var k = th.dataset.sort;
+        var k = th.dataset.sort === 'sev' ? 'score' : th.dataset.sort;
         if (S.sortKey === k) S.sortDir = -S.sortDir; else { S.sortKey = k; S.sortDir = (k === 'name' || k === 'topStage' || k === 'rank') ? 1 : -1; }
-        if (k === 'sev') { S.sortKey = 'score'; }
         keepPlace('critical', render);
       });
     });
@@ -670,6 +677,8 @@
     if (!t) { tip.hidden = true; return; }
     tip.textContent = t.getAttribute('data-tip'); tip.hidden = false;
   });
+  window.addEventListener('scroll', function () { tip.hidden = true; }, { passive: true });
+  document.addEventListener('touchstart', function () { tip.hidden = true; }, { passive: true });
   document.addEventListener('mousemove', function (e) {
     if (tip.hidden) return;
     var x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8), y = e.clientY + 16;
@@ -707,7 +716,7 @@
         if (!feed || !feed.reports) throw new Error('bad data');
         var old = recall(STORE);
         store(STORE, text);
-        if (!S.model || old !== text) apply(feed, false); else setFresh('', false);
+        if (!S.model || old !== text) { var y = window.scrollY; apply(feed, false); window.scrollTo(0, y); } else setFresh('', false);
         if (fresh) toast('Figures are up to date');
       })
       .catch(function () {

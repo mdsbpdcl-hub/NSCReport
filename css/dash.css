@@ -58,6 +58,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -.005em; }
 .seg { display: inline-flex; background: var(--grey-t); border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
 .seg button { border: 0; background: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 13.5px; font-weight: 500; color: var(--slate); white-space: nowrap; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(23,32,51,.12); }
+.seg button[disabled] { opacity: .4; cursor: not-allowed; }
 .seg button .n { color: var(--faint); font-weight: 400; margin-left: 5px; }
 .jump { display: flex; gap: 4px; overflow-x: auto; flex: 1 1 300px; min-width: 0; scrollbar-width: none; }
 .jump::-webkit-scrollbar { display: none; }

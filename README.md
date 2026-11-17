@@ -2,7 +2,28 @@
 
 A web page that turns the NSC and Load Change status reports of NBPDCL and SBPDCL into one Excel report and, if asked, updates the dashboard. It does the same job as the desktop app (`nsc_report_app.py`, version 1.1), but nothing needs to be installed.
 
-**Open it:** https://mdsbpdcl-hub.github.io/nscreport/
+**Pendency dashboard:** https://mdsbpdcl-hub.github.io/NSCReport/dashboard.html
+
+**Make the report and update the figures:** https://mdsbpdcl-hub.github.io/NSCReport/
+
+## Pendency dashboard
+
+One report at a time (NSC below 19 kW, NSC 19 to 59 kW, Load change) for Bihar, NBPDCL or SBPDCL:
+
+- At a glance: pending, where it sits by stage, all reports side by side
+- Where cases are stuck: stage bars with the office that usually acts, and a circle by stage heat map
+- Most critical units: circle, division, sub-division or section, ranked by a score out of 100
+  (pending count 40%, pending % 25%, completed after 15 days 15%, on hold 10%, growth in a week 10%,
+  each compared with the other units at that level; Critical 75+, High 60-74, Moderate 40-59, Low below 40)
+- Delay: completed within and after 15 days, slowest divisions, most on hold
+- AMISP and meter agencies
+- Pendency over time: daily, weekly, monthly; units growing fastest and most improved
+- Review points written from the figures
+- Data gaps and cancellations
+- Top pendency report as a PDF (A4 landscape)
+
+The figures come from the web app (`?format=json`). The page shows the last figures it saw at once and then checks for newer ones.
+
 
 ## How to use
 
@@ -37,6 +58,7 @@ In Chrome and Edge you are asked where to save the report. Other browsers save i
 | `index.html`, `css/style.css` | The page |
 | `js/app.js` | What the page does |
 | `js/engine.js` | Reading, checking and adding up the files, the Excel report, the dashboard update |
-| `js/vendor/` | SheetJS (reading Excel) and ExcelJS (writing Excel), with their licences |
+| `dashboard.html`, `css/dash.css`, `js/dash.js`, `js/dash-pdf.js` | The pendency dashboard and its PDF report |
+| `js/vendor/` | SheetJS, ExcelJS, jsPDF and jsPDF-AutoTable, with their licences |
 
 To point the page at a different dashboard, change `WEB_APP_URL` near the top of `js/engine.js`.

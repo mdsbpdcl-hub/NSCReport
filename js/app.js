@@ -29,8 +29,8 @@
   setTheme(saved, false);
   document.querySelectorAll('.dot').forEach(function (d) { d.addEventListener('click', function () { setTheme(d.dataset.theme, true); }); });
 
-  $('openDash').href = E.WEB_APP_URL;
-  $('doneDash').href = E.WEB_APP_URL;
+  $('openDash').href = 'dashboard.html';
+  $('doneDash').href = 'dashboard.html';
 
   // ------------------------------------------------------------ log
   var logEmpty = true;
@@ -345,7 +345,7 @@
       say(text, 'good');
       setBusy(false, text);
       showDone(true, 'Dashboard updated', savedAs + ' is saved, and the dashboard now shows these figures for ' + done.join(' and ') + '.', true);
-      try { window.open(E.WEB_APP_URL, '_blank', 'noopener'); } catch (e) { /* the button is there */ }
+      try { window.open('dashboard.html', '_blank', 'noopener'); } catch (e) { /* the button is there */ }
     }).catch(function (err) {
       if (err && err.code === 'PASSWORD') {
         say(err.message || 'The password was not accepted.', 'bad');

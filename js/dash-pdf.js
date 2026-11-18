@@ -32,14 +32,15 @@
         var t = A.sumUp(A.scopeRecs(rep, d)); if (!t.lines) return;
         var tr = A.trendRows(rep, d), wk = A.histUnits('week', rep, d), lt = A.histUnits('latest', rep, d), ch = null;
         if (wk && lt && wk.date !== lt.date) { var then = tr.filter(function (x) { return x.date === wk.date; })[0]; if (then) ch = t.pend - then.pend; }
-        body.push([A.REPORT_NAME[rep], d === 'ALL' ? 'Bihar' : d, A.n(t.reg), A.n(t.pend), A.pct(A.ratio(t.pend, t.reg)),
+        var pt = A.periodText(rep, d);
+        body.push([A.REPORT_NAME[rep], d === 'ALL' ? 'Bihar' : d, /last 1 year/.test(pt) ? 'Last 1 year' : (pt ? 'Since 1 Jan 2020' : '-'), A.n(t.reg), A.n(t.pend), A.pct(A.ratio(t.pend, t.reg)),
           A.kindOf(rep) === 'nsc' ? A.pct(A.ratio(t.out15, t.done)) : '-', A.n(t.hold), A.pct(A.ratio(t.canc, t.reg)), signed(ch)]);
       });
     });
     doc.autoTable({
       startY: y + 3, margin: { left: M, right: M }, theme: 'grid',
-      head: [['Report', 'DISCOM', 'Registered', 'Pending', 'Pending %', 'Completed after 15 days', 'On hold', 'Cancelled %', 'Change in a week']],
-      body: body, styles: tableStyle(), headStyles: headStyle(), columnStyles: rightFrom(2, 9),
+      head: [['Report', 'DISCOM', 'Period', 'Registered', 'Pending', 'Pending %', 'Completed after 15 days', 'On hold', 'Cancelled %', 'Change in a week']],
+      body: body, styles: tableStyle(), headStyles: headStyle(), columnStyles: rightFrom(3, 10),
       didParseCell: function (h) { if (h.section === 'body' && h.row.raw[1] === 'Bihar') h.cell.styles.fontStyle = 'bold'; }
     });
 
@@ -71,8 +72,8 @@
         var label = { circle: 'Circles', division: 'Divisions', sub: 'Sub-divisions', section: 'Sections' }[lvl];
         doc.text(A.REPORT_NAME[rep] + ': ' + (lvl === 'circle' ? 'all circles' : 'top ' + top.length + ' ' + label.toLowerCase()) + ' by criticality', M, 13);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, SLATE);
-        var t = A.sumUp(A.scopeRecs(rep, discom));
-        doc.text(scope + '  |  ' + A.n(t.pend) + ' pending of ' + A.n(t.reg) + ' registered  |  ' + units.length + ' ' + A.PLURAL[lvl] + ' with pending cases  |  ' +
+        var t = A.sumUp(A.scopeRecs(rep, discom)), per = A.periodText(rep, discom);
+        doc.text(scope + (per ? '  |  ' + per : '') + '  |  ' + A.n(t.pend) + ' pending of ' + A.n(t.reg) + ' registered  |  ' + units.length + ' ' + A.PLURAL[lvl] + ' with pending cases  |  ' +
           'Score: pending 40%, pending % 25%' + (kind === 'nsc' ? ', after 15 days 15%' : '') + ', on hold 10%, weekly growth 10%', M, 19);
         var hasChange = units.some(function (u) { return u.change !== null; });
         var head = ['#', label.replace(/s$/, ''), 'Within', 'Pending', 'Pending %'].concat(kind === 'nsc' ? ['After 15 days'] : []).concat(['On hold', 'Main stage']).concat(hasChange ? ['Week change'] : []).concat(['Score', 'Severity']);

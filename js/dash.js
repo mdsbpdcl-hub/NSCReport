@@ -121,16 +121,40 @@
     });
   }
 
-  // ---- history
+  // ---- report period: every application since 01-Jan-2020 ('full') or a recent window such as the last 1 year ('year')
+  var MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  function dayOf(x) { var m = /^(\d{1,2})[-\s]([A-Za-z]{3})[-\s](\d{4})/.exec(String(x || '').trim()); return m && MON[m[2].toLowerCase()] !== undefined ? Date.UTC(+m[3], MON[m[2].toLowerCase()], +m[1]) : null; }
+  function kindOfPeriod(from) { var d = dayOf(from); return d === null || d === Date.UTC(2020, 0, 1) ? 'full' : 'year'; }
+  function periodsOf(report, discom) {
+    var out = []; Object.keys(S.model.meta).forEach(function (k) {
+      var p = k.split('|'); if (p[1] !== report || (discom !== 'ALL' && p[0] !== discom)) return;
+      out.push(S.model.meta[k]);
+    });
+    return out;
+  }
+  function periodKind(report, discom) { return periodsOf(report, discom).some(function (m) { return kindOfPeriod(m.periodFrom) === 'year'; }) ? 'year' : 'full'; }
+  function nice(x) { var d = dayOf(x); if (d === null) return x || ''; var t = new Date(d); return t.getUTCDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][t.getUTCMonth()] + ' ' + t.getUTCFullYear(); }
+  function periodText(report, discom) {
+    var ps = periodsOf(report, discom), froms = [], tos = [];
+    ps.forEach(function (m) { if (m.periodFrom && froms.indexOf(m.periodFrom) < 0) froms.push(m.periodFrom); if (m.periodTo && tos.indexOf(m.periodTo) < 0) tos.push(m.periodTo); });
+    if (!froms.length) return '';
+    var kind = periodKind(report, discom);
+    var range = froms.length === 1 ? nice(froms[0]) : froms.map(nice).join(' / ');
+    var to = tos.length === 1 ? nice(tos[0]) : tos.map(nice).join(' / ');
+    return kind === 'year' ? 'Applications registered ' + range + ' to ' + to + ' (last 1 year)' : 'All applications since ' + range;
+  }
+
+  // ---- history (only updates that cover the same kind of period are compared)
   function histUnits(which, report, discom) {
     var set = S.model.history.units && S.model.history.units[which];
     if (!set) return null;
-    var out = {};
+    var kind = periodKind(report, discom), out = {}, any = false;
     set.reports.forEach(function (r) {
-      if (r.report !== report || (discom !== 'ALL' && r.discom !== discom)) return;
+      if (r.report !== report || (discom !== 'ALL' && r.discom !== discom) || kindOfPeriod(r.periodFrom) !== kind) return;
+      any = true;
       r.units.forEach(function (u) { out[r.discom + '|' + u[0]] = { reg: u[1], canc: u[2], done: u[3], pend: u[4], late: u[5], hold: u[6] }; });
     });
-    return { date: set.date, units: out };
+    return any ? { date: set.date, units: out } : null;
   }
   // pending of a unit at a level, from a history set (null when the level is finer than what is saved)
   function histPend(h, unitKey, level, report) {
@@ -147,7 +171,8 @@
   function intervalSet(which) { return which === 'day' ? 'day' : which === 'month' ? 'month' : 'week'; }
   function trendRows(report, discom) {
     // totals per date; for both DISCOMs together the last known figure of each is carried forward
-    var rows = (S.model.history.totals || []).filter(function (t) { return t[2] === report && (discom === 'ALL' || t[1] === discom); });
+    var kind = periodKind(report, discom);
+    var rows = (S.model.history.totals || []).filter(function (t) { return t[2] === report && (discom === 'ALL' || t[1] === discom) && kindOfPeriod(t[9]) === kind; });
     var dates = Array.from(new Set(rows.map(function (t) { return t[0]; }))).sort();
     var last = {}, out = [], both = new Set(rows.map(function (t) { return t[1]; })).size;
     dates.forEach(function (d) {
@@ -162,17 +187,18 @@
   }
   // registered per data date from the update log, for new-registration counts before the history began
   function logRegistrations(report, discom) {
+    if (periodKind(report, discom) === 'year') return [];      // a moving window: older applications drop out every day
     var MON = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
     var by = {};
     (S.model.history.log || []).forEach(function (l) {
-      if (l[2] !== report || (discom !== 'ALL' && l[1] !== discom)) return;
+      if (l[2] !== report || (discom !== 'ALL' && l[1] !== discom) || kindOfPeriod(l[5]) !== 'full') return;
       var m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})/.exec(l[6] || '');
       if (!m || MON[m[2]] === undefined) return;
       var d = m[3] + '-' + ('0' + (MON[m[2]] + 1)).slice(-2) + '-' + ('0' + m[1]).slice(-2);
       by[d] = by[d] || {}; by[d][l[1]] = Number(String(l[4]).replace(/,/g, '')) || 0;
     });
     (S.model.history.totals || []).forEach(function (t) {
-      if (t[2] !== report || (discom !== 'ALL' && t[1] !== discom)) return;
+      if (t[2] !== report || (discom !== 'ALL' && t[1] !== discom) || kindOfPeriod(t[9]) !== 'full') return;
       by[t[0]] = by[t[0]] || {}; by[t[0]][t[1]] = t[3];
     });
     var dates = Object.keys(by).sort(), last = {}, out = [];
@@ -303,6 +329,11 @@
       var off = d[0] !== 'ALL' && !has[d[0]];
       return '<button type="button" data-discom="' + d[0] + '" aria-pressed="' + (d[0] === S.discom) + '"' + (off ? ' disabled title="No figures for ' + d[0] + ' in this report"' : '') + '>' + d[1] + '</button>';
     }).join('');
+    var kind = periodKind(S.report, S.discom);
+    $('periodChip').hidden = false;
+    $('periodChip').textContent = kind === 'year' ? 'Last 1 year' : 'Since 1 Jan 2020';
+    $('periodChip').className = 'pchip ' + kind;
+    $('periodChip').title = periodText(S.report, S.discom);
     var secs = [['glance', 'At a glance'], ['stages', 'Stages'], ['critical', 'Critical units'], ['delay', 'Delay'],
       ['agency', kindOf(S.report) === 'lc' ? 'Agencies' : 'AMISP'], ['trend', 'Trend'], ['review', 'Review points'], ['gaps', 'Data gaps'], ['cancel', 'Cancellations']];
     $('jump').innerHTML = secs.map(function (s) { return '<a href="#' + s[0] + '">' + s[1] + '</a>'; }).join('');
@@ -359,7 +390,8 @@
     });
     return '<section class="sec" id="glance" style="margin-top:4px">' +
       '<div class="panel"><div class="hero"><div class="hero-num"><div class="lab">' + esc(REPORT_NAME[S.report]) + ' pending, ' + esc(scopeLabel()) + '</div>' +
-      '<div class="big">' + n(t.pend) + '</div><div class="ctx"><b>' + pct(ratio(t.pend, t.reg)) + '</b> of ' + n(t.reg) + ' registered</div>' + delta + '</div>' +
+      '<div class="big">' + n(t.pend) + '</div><div class="ctx"><b>' + pct(ratio(t.pend, t.reg)) + '</b> of ' + n(t.reg) + ' registered</div>' +
+      (periodText(S.report, S.discom) ? '<div class="period">' + esc(periodText(S.report, S.discom)) + '</div>' : '') + delta + '</div>' +
       '<div><div class="pipe-lab"><span>Where the pending applications are</span><span>' + n(t.pend) + ' in ' + stages.length + ' stages</span></div>' +
       '<div class="pipe">' + pipe + '</div><div class="pipe-key">' + key + '</div></div></div></div>' +
       '<div class="kpis">' + kpis + '</div>' +
@@ -522,7 +554,7 @@
     var regSeries = bucket(regs, iv).map(function (x, i, arr) { return i ? { date: x.date, v: x.reg - arr[i - 1].reg, days: daysBetween(arr[i - 1].date, x.date) } : null; }).filter(Boolean);
     var chart = series.length >= 2 ? lineChart(series.map(function (x) { return { label: x.date, v: x.pend }; })) :
       '<div class="note-box">The pending trend starts with the first saved update' + (series.length ? ' (' + fmtDate(series[0].date) + ')' : '') + '. Each update adds one point; weekly and monthly views fill in as updates continue.</div>';
-    var regChart = regSeries.length ? barChart(regSeries.map(function (x) { return { label: x.date, v: Math.max(0, x.v), tip: n(x.v) + ' new in ' + x.days + ' day' + (x.days > 1 ? 's' : '') }; })) : '<p class="empty">Shows once two updates are saved.</p>';
+    var regChart = periodKind(S.report, S.discom) === 'year' ? '<p class="empty">Not shown for the last-1-year figures: each day the oldest applications leave the one-year window, so the change in the total is not the number of new registrations.</p>' : regSeries.length ? barChart(regSeries.map(function (x) { return { label: x.date, v: Math.max(0, x.v), tip: n(x.v) + ' new in ' + x.days + ' day' + (x.days > 1 ? 's' : '') }; })) : '<p class="empty">Shows once two updates are saved.</p>';
     // movers
     var which = intervalSet(iv), prev = histUnits(which, S.report, S.discom), now = histUnits('latest', S.report, S.discom);
     var movers = '';
@@ -743,7 +775,7 @@
       .then(function () { b.disabled = false; b.querySelector('span').textContent = label; });
   });
   function api() {
-    return { S: S, REPORTS: S.model.reports, REPORT_NAME: REPORT_NAME, DISCOMS: DISCOMS, LEVELS: LEVELS, PLURAL: PLURAL, scored: scored, sumUp: sumUp,
+    return { S: S, REPORTS: S.model.reports, periodText: periodText, REPORT_NAME: REPORT_NAME, DISCOMS: DISCOMS, LEVELS: LEVELS, PLURAL: PLURAL, scored: scored, sumUp: sumUp,
       scopeRecs: scopeRecs, reviewPoints: reviewPoints, stagesOf: stagesOf, kindOf: kindOf, sevName: sevName, n: n, pct: pct, ratio: ratio, fmtDate: fmtDate,
       histUnits: histUnits, trendRows: trendRows, asOn: S.feed.asOn || '' };
   }

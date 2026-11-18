@@ -104,12 +104,12 @@
     $('fileBox').hidden = !rows.length;
     $('clearBtn').hidden = !rows.length;
     $('fileRows').innerHTML = rows.map(function (f) {
-      var r = f.rep, st;
+      var r = f.rep, st, notes = r ? [E.periodCheck(r, lastYear())].filter(Boolean).concat(r.notes) : [];
       if (f.reading) st = '<span class="st wait">Reading</span>';
       else if (f.error) st = '<span class="st bad">Problem</span><div class="why">' + esc(f.error) + '</div>' +
         (f.err ? '<button class="btn grad match-btn" data-match="' + f.id + '">Match the headings</button>' : '');
-      else if (r.notes.length) st = '<span class="st note">Ready, ' + r.notes.length + ' note' + (r.notes.length > 1 ? 's' : '') + '</span>' +
-        '<ul class="notes">' + r.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>';
+      else if (notes.length) st = '<span class="st note">Ready, ' + notes.length + ' note' + (notes.length > 1 ? 's' : '') + '</span>' +
+        '<ul class="notes">' + notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>';
       else st = '<span class="st ok">Ready</span>';
       return '<tr class="' + (r ? '' : 'norep') + '"><td class="fname">' + esc(f.name) + '</td>' +
         '<td class="c-d">' + (r ? '<span class="chip ' + (r.discom === 'NBPDCL' ? 'nb' : 'sb') + '">' + r.discom + '</span>' : '') + '</td>' +
@@ -141,6 +141,18 @@
     return m ? new Date(+m[3], MONTHS.indexOf(m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase()), +m[1]).getTime() : 0;
   }
   function today() { var d = new Date(); return ('0' + d.getDate()).slice(-2) + '-' + MONTHS[d.getMonth()] + '-' + d.getFullYear(); }
+
+  // ---- last 1 year only (ticked when the page opens)
+  function lastYear() { return $('lastYear').checked; }
+  function showYearHint() {
+    var today = E.fmtDay(E.todayDay());
+    $('yearHint').innerHTML = lastYear()
+      ? 'On the portal, download every report with Period From <strong>' + E.yearStartFor(today) + '</strong> and Period To <strong>' + today +
+        '</strong>. Applications older than one year are left out of all figures.'
+      : 'All applications: download every report with Period From <strong>' + E.FULL_PERIOD_FROM + '</strong> and Period To <strong>' + today + '</strong>.';
+  }
+  $('lastYear').addEventListener('change', function () { showYearHint(); hideDone(); render(); });
+  showYearHint();
 
   var nameTouched = false;
   $('outName').addEventListener('input', function () { nameTouched = true; });
@@ -297,7 +309,7 @@
     var name = $('outName').value.trim().replace(/[\\/:*?"<>|]/g, '-');
     if (!name) { alertMsg('Give the report a file name.'); return; }
     if (!/\.xlsx$/i.test(name)) { name += '.xlsx'; $('outName').value = name; }
-    var set = E.checkSet(reps);
+    var set = E.checkSet(reps, { lastYear: lastYear() });
     if (set.problems.length) { set.problems.forEach(function (p) { say(p, 'bad'); }); alertMsg(set.problems.join('\n')); return; }
 
     var placeStep = canPickPlace

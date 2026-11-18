@@ -39,6 +39,10 @@
       <h2 id="s1">Choose the report files</h2>
       <button class="link" id="clearBtn" hidden>Clear list</button>
     </div>
+    <label class="yearbox">
+      <input type="checkbox" id="lastYear" checked>
+      <span class="yb-text"><b>Last 1 year only</b><span id="yearHint"></span></span>
+    </label>
     <label class="drop" id="drop" for="fileInput">
       <input type="file" id="fileInput" accept=".xlsx,.xlsm,.csv" multiple>
       <span class="drop-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 15v4H5v-4H3v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4h-2zM11 4.8V16h2V4.8l3.6 3.6L18 7l-6-6-6 6 1.4 1.4L11 4.8z"/></svg></span>

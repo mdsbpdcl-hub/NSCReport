@@ -319,11 +319,6 @@
     var topText = topTexts.join(' | ');
     var m = /Period\s+(\d{1,2}-[A-Za-z]{3}-\d{4})\s+to\s+(\d{1,2}-[A-Za-z]{3}-\d{4})/i.exec(topText);
     if (m) { rep.periodFrom = m[1]; rep.periodTo = m[2]; }
-    if (rep.periodFrom && !sameDate(rep.periodFrom, FULL_PERIOD_FROM)) {
-      rep.partialPeriod = true;
-      rep.notes.push('The report period starts on ' + rep.periodFrom + ', not ' + FULL_PERIOD_FROM +
-        ', so it counts only the applications from that date. Download the report for the full period unless this is intended.');
-    }
 
     // ---- headings
     var headCells = grid[headAt];
@@ -526,23 +521,53 @@
     return rep;
   }
 
-  function sameDate(a, b) {
-    function key(x) {
-      var m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec(String(x || '').trim());
-      return m ? Number(m[1]) + '-' + m[2].toLowerCase() + '-' + m[3] : String(x || '').trim().toLowerCase();
+  // ---- report period: all applications since 01-Jan-2020, or the last 1 year
+  var MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function parseDay(x) {
+    var m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec(String(x || '').trim());
+    if (!m) return null;
+    var mon = MON3.map(function (k) { return k.toLowerCase(); }).indexOf(m[2].toLowerCase());
+    return mon < 0 ? null : Date.UTC(Number(m[3]), mon, Number(m[1]));
+  }
+  function fmtDay(t) { var d = new Date(t); return ('0' + d.getUTCDate()).slice(-2) + '-' + MON3[d.getUTCMonth()] + '-' + d.getUTCFullYear(); }
+  function todayDay() { var d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); }
+  // the first day of the year that ends on `to` (17-Nov-2026 -> 18-Nov-2025)
+  function yearStartFor(to) {
+    var end = typeof to === 'number' ? to : (parseDay(to) || todayDay()), d = new Date(end);
+    var start = Date.UTC(d.getUTCFullYear() - 1, d.getUTCMonth(), d.getUTCDate()) + 864e5;
+    if (d.getUTCMonth() === 1 && d.getUTCDate() === 29) start = Date.UTC(d.getUTCFullYear() - 1, 2, 1);
+    return fmtDay(start);
+  }
+  function sameDate(a, b) { var x = parseDay(a), y = parseDay(b); return x !== null && x === y; }
+  var YEAR_SLACK_DAYS = 15;
+  // '' when the file's period suits the choice, otherwise a plain warning
+  function periodCheck(rep, lastYear) {
+    if (!rep.periodFrom) return '';
+    if (!lastYear) {
+      return sameDate(rep.periodFrom, FULL_PERIOD_FROM) ? '' : 'The report period starts on ' + rep.periodFrom + ', not ' + FULL_PERIOD_FROM +
+        ', so it counts only the applications from that date. Tick "Last 1 year only" if that is intended, or download it for the full period.';
     }
-    return key(a) === key(b);
+    var want = yearStartFor(rep.periodTo), from = parseDay(rep.periodFrom), w = parseDay(want);
+    if (sameDate(rep.periodFrom, FULL_PERIOD_FROM)) return 'This file covers every application since ' + FULL_PERIOD_FROM + ', but "Last 1 year only" is ticked. ' +
+      'Download it with Period From ' + want + ', or untick the box.';
+    if (from === null || Math.abs(from - w) > YEAR_SLACK_DAYS * 864e5) return 'The report period starts on ' + rep.periodFrom + '. For the last 1 year up to ' + (rep.periodTo || 'today') +
+      ' it should start on ' + want + '.';
+    return '';
   }
 
-  function checkSet(reports) {
+  // opts.lastYear: true when the figures should cover the last 1 year only
+  function checkSet(reports, opts) {
+    var lastYear = !!(opts && opts.lastYear);
     var problems = [], notes = [], warnings = [], seen = {};
     reports.forEach(function (rep) {
-      if (rep.partialPeriod) warnings.push(rep.discom + ' ' + rep.report + ': the period starts on ' + rep.periodFrom + ', not ' + FULL_PERIOD_FROM +
-        '. Only applications from that date are counted, so the figures will look much smaller.');
+      var w = periodCheck(rep, lastYear);
+      if (w) warnings.push(rep.discom + ' ' + rep.report + ': ' + w);
     });
-    var starts = [];
-    reports.forEach(function (r) { if (r.periodFrom && !starts.some(function (x) { return sameDate(x, r.periodFrom); })) starts.push(r.periodFrom); });
-    if (starts.length > 1) warnings.push('The files do not start on the same date (' + starts.join(', ') + '), so their figures cannot be compared fairly.');
+    var starts = reports.map(function (r) { return parseDay(r.periodFrom); }).filter(function (t) { return t !== null; });
+    if (starts.length > 1 && Math.max.apply(null, starts) - Math.min.apply(null, starts) > 7 * 864e5) {
+      var shown = []; reports.forEach(function (r) { if (r.periodFrom && shown.indexOf(r.periodFrom) < 0) shown.push(r.periodFrom); });
+      warnings.push('The files do not start on the same date (' + shown.join(', ') + '), so their figures cannot be compared fairly.');
+    }
     reports.forEach(function (rep) {
       var key = rep.discom + '|' + rep.report;
       if (seen[key]) problems.push('Two files are for ' + rep.discom + ' ' + rep.report + ' (' + seen[key] + ' and ' + rep.name + '). Keep only one.');
@@ -857,6 +882,7 @@
   return {
     APP_VERSION: APP_VERSION, WEB_APP_URL: WEB_APP_URL, DISCOMS: DISCOMS, REPORTS: REPORTS,
     LC_AGENCY_TOTAL: LC_AGENCY_TOTAL, ReportError: ReportError, UploadError: UploadError,
+    FULL_PERIOD_FROM: FULL_PERIOD_FROM, periodCheck: periodCheck, yearStartFor: yearStartFor, todayDay: todayDay, fmtDay: fmtDay,
     norm: norm, canonical: canonical, seqRatio: seqRatio, closeMatches: closeMatches, align: align, fmtIn: fmtIn,
     parseReport: parseReport, checkSet: checkSet, tally: tally, buildTables: buildTables,
     makeWorkbook: makeWorkbook, makePayload: makePayload, browserBatch: browserBatch, upload: upload

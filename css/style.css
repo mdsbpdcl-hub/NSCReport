@@ -77,6 +77,15 @@ h2 { margin: 0; font-size: 17px; font-weight: 600; }
 .drop-main u { color: var(--t1); text-underline-offset: 3px; }
 .drop-sub { color: var(--muted); font-size: 13.5px; max-width: 640px; }
 
+/* last 1 year */
+.yearbox { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; margin-bottom: 14px; border-radius: 12px; cursor: pointer;
+  background: var(--t1s); border: 1px solid color-mix(in srgb, var(--t1) 30%, var(--line)); }
+.yearbox input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--t1); flex: none; cursor: pointer; }
+.yb-text { display: grid; gap: 2px; font-size: 14px; }
+.yb-text b { font-size: 15px; }
+.yb-text span { color: var(--muted); }
+.yb-text span strong { color: var(--ink); }
+
 /* file table */
 .table-box { margin-top: 16px; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
 .files { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 760px; }

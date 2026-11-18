@@ -792,15 +792,36 @@
   function loadScript(src) {
     return new Promise(function (ok, bad) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = bad; document.head.appendChild(s); });
   }
-  $('pdfBtn').addEventListener('click', function () {
-    var b = $('pdfBtn'); b.disabled = true; var label = b.querySelector('span').textContent; b.querySelector('span').textContent = 'Preparing the PDF';
+  var pdfBusy = false;
+  function closeMenu() { $('pdfMenu').hidden = true; $('pdfBtn').setAttribute('aria-expanded', 'false'); }
+  $('pdfBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var menu = $('pdfMenu');
+    if (!menu.hidden) { closeMenu(); return; }
+    var kind = kindOf(S.report);
+    menu.innerHTML = '<div class="mh">' + esc(REPORT_NAME[S.report]) + ', ' + esc(S.discom === 'ALL' ? 'Bihar' : S.discom) + ': one PDF per level</div>' +
+      LEVELS[kind].map(function (l) {
+        var count = groupBy(scopeRecs(S.report, S.discom), l[0]).filter(function (u) { return u.pend > 0; }).length;
+        return '<button type="button" role="menuitem" data-pdf="' + l[0] + '">Top ' + Math.min(20, count) + ' ' + PLURAL[l[0]] + '<span>of ' + count + '</span></button>';
+      }).join('');
+    menu.hidden = false; $('pdfBtn').setAttribute('aria-expanded', 'true');
+    var first = menu.querySelector('button'); if (first) first.focus();
+  });
+  document.addEventListener('click', function (e) { if (!e.target.closest('.pdfwrap')) closeMenu(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+  $('pdfMenu').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pdf]'); if (!b || pdfBusy) return;
+    var level = b.dataset.pdf; closeMenu();
+    pdfBusy = true;
+    var btn = $('pdfBtn'), label = btn.querySelector('span').textContent;
+    btn.disabled = true; btn.querySelector('span').textContent = 'Preparing the PDF';
     var ready = window.NSCPdf ? Promise.resolve() : loadScript('js/vendor/jspdf.umd.min.js').then(function () { return loadScript('js/vendor/jspdf.plugin.autotable.min.js'); }).then(function () { return loadScript('js/dash-pdf.js'); });
-    ready.then(function () { window.NSCPdf.make(api()); })
+    ready.then(function () { window.NSCPdf.make(api(), level); })
       .catch(function () { toast('The PDF could not be made. Check the connection and try again.'); })
-      .then(function () { b.disabled = false; b.querySelector('span').textContent = label; });
+      .then(function () { pdfBusy = false; btn.disabled = false; btn.querySelector('span').textContent = label; });
   });
   function api() {
-    return { S: S, REPORTS: S.model.reports, periodText: periodText, mixedPeriods: mixedPeriods, REPORT_NAME: REPORT_NAME, DISCOMS: DISCOMS, LEVELS: LEVELS, PLURAL: PLURAL, scored: scored, sumUp: sumUp,
+    return { S: S, REPORTS: S.model.reports, periodText: periodText, mixedPeriods: mixedPeriods, groupBy: groupBy, REPORT_NAME: REPORT_NAME, DISCOMS: DISCOMS, LEVELS: LEVELS, PLURAL: PLURAL, scored: scored, sumUp: sumUp,
       scopeRecs: scopeRecs, reviewPoints: reviewPoints, stagesOf: stagesOf, kindOf: kindOf, sevName: sevName, n: n, pct: pct, ratio: ratio, fmtDate: fmtDate,
       histUnits: histUnits, trendRows: trendRows, asOn: S.feed.asOn || '' };
   }

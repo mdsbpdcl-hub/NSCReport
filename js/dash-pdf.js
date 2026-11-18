@@ -33,7 +33,7 @@
         var tr = A.trendRows(rep, d), wk = A.histUnits('week', rep, d), lt = A.histUnits('latest', rep, d), ch = null;
         if (wk && lt && wk.date !== lt.date) { var then = tr.filter(function (x) { return x.date === wk.date; })[0]; if (then) ch = t.pend - then.pend; }
         var pt = A.periodText(rep, d);
-        body.push([A.REPORT_NAME[rep], d === 'ALL' ? 'Bihar' : d, /last 1 year/.test(pt) ? 'Last 1 year' : (pt ? 'Since 1 Jan 2020' : '-'), A.n(t.reg), A.n(t.pend), A.pct(A.ratio(t.pend, t.reg)),
+        body.push([A.REPORT_NAME[rep], d === 'ALL' ? 'Bihar' : d, (d === 'ALL' && A.mixedPeriods(rep)) ? 'Differs' : /last 1 year/.test(pt) ? 'Last 1 year' : (pt ? 'Since 1 Jan 2020' : '-'), A.n(t.reg), A.n(t.pend), A.pct(A.ratio(t.pend, t.reg)),
           A.kindOf(rep) === 'nsc' ? A.pct(A.ratio(t.out15, t.done)) : '-', A.n(t.hold), A.pct(A.ratio(t.canc, t.reg)), signed(ch)]);
       });
     });

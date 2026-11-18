@@ -132,12 +132,23 @@
     });
     return out;
   }
+  // true when NBPDCL and SBPDCL figures of a report cover different kinds of period
+  function mixedPeriods(report) {
+    var kinds = {}; periodsOf(report, 'ALL').forEach(function (m) { kinds[kindOfPeriod(m.periodFrom)] = true; });
+    return Object.keys(kinds).length > 1;
+  }
   function periodKind(report, discom) { return periodsOf(report, discom).some(function (m) { return kindOfPeriod(m.periodFrom) === 'year'; }) ? 'year' : 'full'; }
   function nice(x) { var d = dayOf(x); if (d === null) return x || ''; var t = new Date(d); return t.getUTCDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][t.getUTCMonth()] + ' ' + t.getUTCFullYear(); }
   function periodText(report, discom) {
     var ps = periodsOf(report, discom), froms = [], tos = [];
     ps.forEach(function (m) { if (m.periodFrom && froms.indexOf(m.periodFrom) < 0) froms.push(m.periodFrom); if (m.periodTo && tos.indexOf(m.periodTo) < 0) tos.push(m.periodTo); });
     if (!froms.length) return '';
+    if (discom === 'ALL' && mixedPeriods(report)) {
+      return 'Periods differ: ' + DISCOMS.map(function (d) {
+        var m = periodsOf(report, d)[0]; if (!m) return '';
+        return d + (kindOfPeriod(m.periodFrom) === 'year' ? ' last 1 year (from ' + nice(m.periodFrom) + ')' : ' all since ' + nice(m.periodFrom));
+      }).filter(Boolean).join(', ') + '. Bihar totals add figures of different periods.';
+    }
     var kind = periodKind(report, discom);
     var range = froms.length === 1 ? nice(froms[0]) : froms.map(nice).join(' / ');
     var to = tos.length === 1 ? nice(tos[0]) : tos.map(nice).join(' / ');
@@ -147,7 +158,7 @@
   // ---- history (only updates that cover the same kind of period are compared)
   function histUnits(which, report, discom) {
     var set = S.model.history.units && S.model.history.units[which];
-    if (!set) return null;
+    if (!set || (discom === 'ALL' && mixedPeriods(report))) return null;
     var kind = periodKind(report, discom), out = {}, any = false;
     set.reports.forEach(function (r) {
       if (r.report !== report || (discom !== 'ALL' && r.discom !== discom) || kindOfPeriod(r.periodFrom) !== kind) return;
@@ -171,6 +182,7 @@
   function intervalSet(which) { return which === 'day' ? 'day' : which === 'month' ? 'month' : 'week'; }
   function trendRows(report, discom) {
     // totals per date; for both DISCOMs together the last known figure of each is carried forward
+    if (discom === 'ALL' && mixedPeriods(report)) return [];      // no Bihar trend when the DISCOMs cover different periods
     var kind = periodKind(report, discom);
     var rows = (S.model.history.totals || []).filter(function (t) { return t[2] === report && (discom === 'ALL' || t[1] === discom) && kindOfPeriod(t[9]) === kind; });
     var dates = Array.from(new Set(rows.map(function (t) { return t[0]; }))).sort();
@@ -257,6 +269,9 @@
     var pts = [];
     S.model.reports.forEach(function (rep) {
       var rs = scopeRecs(rep, discom); if (!rs.length) return;
+      if (discom === 'ALL' && mixedPeriods(rep)) pts.push({ tone: 'c', tag: REPORT_NAME[rep], text: 'NBPDCL and SBPDCL figures cover different periods (' +
+        DISCOMS.map(function (d) { var m = periodsOf(rep, d)[0]; return m ? d + ' ' + (kindOfPeriod(m.periodFrom) === 'year' ? 'last 1 year' : 'since ' + nice(m.periodFrom)) : ''; }).filter(Boolean).join(', ') +
+        '). Bihar totals mix the two; upload both for the same period.' });
       var t = sumUp(rs), name = REPORT_NAME[rep], scopeName = discom === 'ALL' ? 'Bihar' : discom;
       var tr = trendRows(rep, discom), wk = histUnits('week', rep, discom), lt = histUnits('latest', rep, discom);
       var change = '';
@@ -331,8 +346,9 @@
     }).join('');
     var kind = periodKind(S.report, S.discom);
     $('periodChip').hidden = false;
-    $('periodChip').textContent = kind === 'year' ? 'Last 1 year' : 'Since 1 Jan 2020';
-    $('periodChip').className = 'pchip ' + kind;
+    var mixed = S.discom === 'ALL' && mixedPeriods(S.report);
+    $('periodChip').textContent = mixed ? 'Periods differ' : kind === 'year' ? 'Last 1 year' : 'Since 1 Jan 2020';
+    $('periodChip').className = 'pchip ' + (mixed ? 'mix' : kind);
     $('periodChip').title = periodText(S.report, S.discom);
     var secs = [['glance', 'At a glance'], ['stages', 'Stages'], ['critical', 'Critical units'], ['delay', 'Delay'],
       ['agency', kindOf(S.report) === 'lc' ? 'Agencies' : 'AMISP'], ['trend', 'Trend'], ['review', 'Review points'], ['gaps', 'Data gaps'], ['cancel', 'Cancellations']];
@@ -340,9 +356,14 @@
   }
 
   function sinceText() {
-    var from = Object.keys(S.model.meta).filter(function (k) { return k.split('|')[1] === S.report; })
-      .map(function (k) { return S.model.meta[k].periodFrom; }).filter(Boolean)[0];
-    return from ? 'since ' + String(from).replace(/-/g, ' ') : 'all registered';
+    if (S.discom === 'ALL' && mixedPeriods(S.report)) return 'periods differ by DISCOM';
+    var from = periodsOf(S.report, S.discom).map(function (m) { return m.periodFrom; }).filter(Boolean)[0];
+    return from ? 'since ' + nice(from) : 'all registered';
+  }
+  function periodShort(rep, d) {
+    if (d === 'ALL' && mixedPeriods(rep)) return '<span class="pchip mix">Differs</span>';
+    if (!periodsOf(rep, d).length) return '-';
+    return periodKind(rep, d) === 'year' ? 'Last 1 year' : 'Since 2020';
   }
   function scopeLabel() { return S.discom === 'ALL' ? 'Bihar (NBPDCL + SBPDCL)' : S.discom; }
 
@@ -384,6 +405,7 @@
         var on = rep === S.report && d === S.discom;
         rows += '<tr data-go-report="' + esc(rep) + '" data-go-discom="' + d + '" class="' + (on ? 'on' : '') + '">' +
           '<td><span class="rep">' + esc(REPORT_NAME[rep]) + '</span> <span class="muted small">' + (d === 'ALL' ? 'Bihar' : d) + '</span></td>' +
+          '<td class="l">' + periodShort(rep, d) + '</td>' +
           '<td>' + n(x.reg) + '</td><td><b>' + n(x.pend) + '</b></td><td>' + pct(ratio(x.pend, x.reg)) + '</td>' +
           '<td>' + (x.in15 || x.out15 ? pct(ratio(x.out15, x.in15 + x.out15)) : '-') + '</td><td>' + n(x.hold) + '</td><td>' + pct(ratio(x.canc, x.reg)) + '</td></tr>';
       });
@@ -391,11 +413,11 @@
     return '<section class="sec" id="glance" style="margin-top:4px">' +
       '<div class="panel"><div class="hero"><div class="hero-num"><div class="lab">' + esc(REPORT_NAME[S.report]) + ' pending, ' + esc(scopeLabel()) + '</div>' +
       '<div class="big">' + n(t.pend) + '</div><div class="ctx"><b>' + pct(ratio(t.pend, t.reg)) + '</b> of ' + n(t.reg) + ' registered</div>' +
-      (periodText(S.report, S.discom) ? '<div class="period">' + esc(periodText(S.report, S.discom)) + '</div>' : '') + delta + '</div>' +
+      (periodText(S.report, S.discom) ? '<div class="period' + (S.discom === 'ALL' && mixedPeriods(S.report) ? ' mixwarn' : '') + '">' + esc(periodText(S.report, S.discom)) + '</div>' : '') + delta + '</div>' +
       '<div><div class="pipe-lab"><span>Where the pending applications are</span><span>' + n(t.pend) + ' in ' + stages.length + ' stages</span></div>' +
       '<div class="pipe">' + pipe + '</div><div class="pipe-key">' + key + '</div></div></div></div>' +
       '<div class="kpis">' + kpis + '</div>' +
-      '<div class="panel" style="margin-top:16px"><h3>All reports</h3><p class="sub">Pick a line to look at that report.</p><div class="tbox" style="border:0"><table class="matrix"><thead><tr><th>Report</th><th>Registered</th><th>Pending</th><th>Pending %</th><th>Done after 15 days</th><th>On hold</th><th>Cancelled %</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
+      '<div class="panel" style="margin-top:16px"><h3>All reports</h3><p class="sub">Pick a line to look at that report.</p><div class="tbox" style="border:0"><table class="matrix"><thead><tr><th>Report</th><th style="text-align:left">Period</th><th>Registered</th><th>Pending</th><th>Pending %</th><th>Done after 15 days</th><th>On hold</th><th>Cancelled %</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
       '</section>';
   }
 
@@ -574,8 +596,11 @@
         '<div class="grid2" style="margin-top:16px"><div class="panel"><h3>Pendency growing fastest</h3><p class="sub">' + title(PLURAL[lvl]) + ', change in pending</p>' + barList(up, 'mvAbs', function (u) { return 'now ' + n(u.pend); }, 'var(--crit)') + '</div>' +
         '<div class="panel"><h3>Most improved</h3><p class="sub">' + title(PLURAL[lvl]) + ', fall in pending</p>' + barList(down, 'mvAbs', function (u) { return 'now ' + n(u.pend); }, 'var(--low)') + '</div></div>';
     }
-    return '<section class="sec" id="trend"><div class="sec-head"><h2>Pendency over time</h2><p>From the figures saved at each update.</p><div class="tools">' + seg + '</div></div>' +
-      '<div class="grid2"><div class="panel"><h3>Pending applications</h3><p class="sub">' + esc(REPORT_NAME[S.report]) + ', ' + esc(scopeLabel()) + '</p>' + chart + '</div>' +
+    var winNote = periodKind(S.report, S.discom) === 'year' && !(S.discom === 'ALL' && mixedPeriods(S.report))
+      ? ' In the last-1-year view pending can also fall because applications older than a year leave the window.' : '';
+    var mixNote = S.discom === 'ALL' && mixedPeriods(S.report) ? '<div class="note-box" style="margin-bottom:12px">NBPDCL and SBPDCL cover different periods, so there is no Bihar trend. Pick NBPDCL or SBPDCL to see each trend.</div>' : '';
+    return '<section class="sec" id="trend"><div class="sec-head"><h2>Pendency over time</h2><p>From the figures saved at each update.' + winNote + '</p><div class="tools">' + seg + '</div></div>' +
+      mixNote + '<div class="grid2"><div class="panel"><h3>Pending applications</h3><p class="sub">' + esc(REPORT_NAME[S.report]) + ', ' + esc(scopeLabel()) + '</p>' + chart + '</div>' +
       '<div class="panel"><h3>New registrations</h3><p class="sub">Registered since the previous point</p>' + regChart + '</div></div>' + movers + '</section>';
   }
   function daysBetween(a, b) { return Math.max(1, Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5)); }
@@ -775,7 +800,7 @@
       .then(function () { b.disabled = false; b.querySelector('span').textContent = label; });
   });
   function api() {
-    return { S: S, REPORTS: S.model.reports, periodText: periodText, REPORT_NAME: REPORT_NAME, DISCOMS: DISCOMS, LEVELS: LEVELS, PLURAL: PLURAL, scored: scored, sumUp: sumUp,
+    return { S: S, REPORTS: S.model.reports, periodText: periodText, mixedPeriods: mixedPeriods, REPORT_NAME: REPORT_NAME, DISCOMS: DISCOMS, LEVELS: LEVELS, PLURAL: PLURAL, scored: scored, sumUp: sumUp,
       scopeRecs: scopeRecs, reviewPoints: reviewPoints, stagesOf: stagesOf, kindOf: kindOf, sevName: sevName, n: n, pct: pct, ratio: ratio, fmtDate: fmtDate,
       histUnits: histUnits, trendRows: trendRows, asOn: S.feed.asOn || '' };
   }

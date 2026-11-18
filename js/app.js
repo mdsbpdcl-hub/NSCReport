@@ -307,6 +307,7 @@
 
     placeStep.then(function (handle) {
       if (handle === 'cancel') { status('Stopped: no place was chosen for the report.'); return; }
+      set.warnings.forEach(function (w) { say('Warning: ' + w, 'bad'); });   // warn only; the work goes on
       var pw = update ? askPassword(false) : Promise.resolve(null);
       return pw.then(function (password) {
         if (update && !password) { status('Stopped: no password was given.'); return; }

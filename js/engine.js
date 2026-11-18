@@ -17,6 +17,7 @@
   var DISCOM_AREA = { NBPDCL: 'North', SBPDCL: 'South' };
   var REPORTS = ['NSC <19 kW', 'NSC 19-59 kW', 'Load Change'];
   var MIN_SHARE_OF_MEDIAN = 0.25;
+  var FULL_PERIOD_FROM = '01-Jan-2020';       // the reports normally count every application since this date
 
   var NSC_KEYS = ['Sl.No.', 'Discom', 'Circle', 'Division', 'SubDivision', 'Section'];
   var NSC_NUMS = ['Registered', 'Cancelled', 'Completed Within 15 Days', 'Completed Beyond 15 Days',
@@ -318,6 +319,11 @@
     var topText = topTexts.join(' | ');
     var m = /Period\s+(\d{1,2}-[A-Za-z]{3}-\d{4})\s+to\s+(\d{1,2}-[A-Za-z]{3}-\d{4})/i.exec(topText);
     if (m) { rep.periodFrom = m[1]; rep.periodTo = m[2]; }
+    if (rep.periodFrom && !sameDate(rep.periodFrom, FULL_PERIOD_FROM)) {
+      rep.partialPeriod = true;
+      rep.notes.push('The report period starts on ' + rep.periodFrom + ', not ' + FULL_PERIOD_FROM +
+        ', so it counts only the applications from that date. Download the report for the full period unless this is intended.');
+    }
 
     // ---- headings
     var headCells = grid[headAt];
@@ -520,8 +526,23 @@
     return rep;
   }
 
+  function sameDate(a, b) {
+    function key(x) {
+      var m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec(String(x || '').trim());
+      return m ? Number(m[1]) + '-' + m[2].toLowerCase() + '-' + m[3] : String(x || '').trim().toLowerCase();
+    }
+    return key(a) === key(b);
+  }
+
   function checkSet(reports) {
-    var problems = [], notes = [], seen = {};
+    var problems = [], notes = [], warnings = [], seen = {};
+    reports.forEach(function (rep) {
+      if (rep.partialPeriod) warnings.push(rep.discom + ' ' + rep.report + ': the period starts on ' + rep.periodFrom + ', not ' + FULL_PERIOD_FROM +
+        '. Only applications from that date are counted, so the figures will look much smaller.');
+    });
+    var starts = [];
+    reports.forEach(function (r) { if (r.periodFrom && !starts.some(function (x) { return sameDate(x, r.periodFrom); })) starts.push(r.periodFrom); });
+    if (starts.length > 1) warnings.push('The files do not start on the same date (' + starts.join(', ') + '), so their figures cannot be compared fairly.');
     reports.forEach(function (rep) {
       var key = rep.discom + '|' + rep.report;
       if (seen[key]) problems.push('Two files are for ' + rep.discom + ' ' + rep.report + ' (' + seen[key] + ' and ' + rep.name + '). Keep only one.');
@@ -533,7 +554,7 @@
       var miss = REPORTS.filter(function (n) { return !seen[d + '|' + n]; });
       if (miss.length && miss.length < REPORTS.length) notes.push(d + ': no file chosen for ' + miss.join(', ') + '.');
     });
-    return { problems: problems, notes: notes };
+    return { problems: problems, notes: notes, warnings: warnings };
   }
 
   // ---------------------------------------------------------------- figures

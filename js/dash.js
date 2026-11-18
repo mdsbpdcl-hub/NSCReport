@@ -51,7 +51,7 @@
     feed: null, model: null,
     report: 'NSC 19-59 kW',                     // the page always opens on NSC 19 to 59 kW
     discom: ['ALL', 'NBPDCL', 'SBPDCL'].indexOf(prefs.discom) >= 0 ? prefs.discom : 'ALL',
-    level: prefs.level || '', sev: '', sortKey: 'score', sortDir: -1, showAll: false,
+    level: prefs.level || '', sev: '', sortKey: 'pend', sortDir: -1, showAll: false,
     interval: prefs.interval || 'week'
   };
   function savePrefs() { store(PREFS, JSON.stringify({ report: S.report, discom: S.discom, level: S.level, interval: S.interval })); }
@@ -256,8 +256,8 @@
       if (!u.pend) u.score = 0;
       u.sev = SEV.filter(function (x) { return u.score >= x[2]; })[0][0];
     });
-    units.sort(function (a, b) { return b.score - a.score || b.pend - a.pend; });
-    units.forEach(function (u, i) { u.rank = i + 1; });
+    units.sort(function (a, b) { return b.pend - a.pend || (b.pPend || 0) - (a.pPend || 0); });
+    units.forEach(function (u, i) { u.rank = i + 1; });          // rank = order of pendency
     return units;
   }
   function sevName(c) { return SEV.filter(function (x) { return x[0] === c; })[0][1]; }
@@ -350,7 +350,7 @@
     $('periodChip').textContent = mixed ? 'Periods differ' : kind === 'year' ? 'Last 1 year' : 'Since 1 Jan 2020';
     $('periodChip').className = 'pchip ' + (mixed ? 'mix' : kind);
     $('periodChip').title = periodText(S.report, S.discom);
-    var secs = [['glance', 'At a glance'], ['stages', 'Stages'], ['critical', 'Critical units'], ['delay', 'Delay'],
+    var secs = [['glance', 'At a glance'], ['stages', 'Stages'], ['critical', 'Top pendency'], ['delay', 'Delay'],
       ['agency', kindOf(S.report) === 'lc' ? 'Agencies' : 'AMISP'], ['trend', 'Trend'], ['review', 'Review points'], ['gaps', 'Data gaps'], ['cancel', 'Cancellations']];
     $('jump').innerHTML = secs.map(function (s) { return '<a href="#' + s[0] + '">' + s[1] + '</a>'; }).join('');
   }
@@ -470,7 +470,7 @@
       if (typeof x === 'string') return dir * x.localeCompare(y);
       return dir * (x - y) || b.pend - a.pend;
     });
-    var shown = S.showAll ? list : list.slice(0, 25);
+    var shown = S.showAll ? list : list.slice(0, 20);
     var hasChange = units.some(function (u) { return u.change !== null; });
     var cols = [['rank', 'Rank', 'r'], ['name', LEVELS[kind].filter(function (l) { return l[0] === S.level; })[0][1], 'l'], ['sev', 'Severity', 'l'], ['score', 'Score', 'r'],
       ['pend', 'Pending', 'r'], ['pPend', 'Pending %', 'r']]
@@ -492,12 +492,12 @@
       return '<option value="' + l[0] + '"' + (l[0] === S.level ? ' selected' : '') + '>By ' + l[1].toLowerCase() + '</option>'; }).join('') + '</select></span>';
     var chips = '<div class="chips">' + [['', 'All', units.length]].concat(SEV.map(function (s) { return [s[0], s[1], counts[s[0]]]; })).map(function (c) {
       return '<button type="button" class="chip" data-sev="' + c[0] + '" aria-pressed="' + (S.sev === c[0]) + '">' + c[1] + '<b>' + c[2] + '</b></button>'; }).join('') + '</div>';
-    return '<section class="sec" id="critical"><div class="sec-head"><h2>Most critical units</h2>' +
-      '<p>Ranked by a score out of 100: pending count 40%, pending % of registered 25%' + (kind === 'nsc' ? ', completed after 15 days 15%' : '') + ', on hold 10%' + (hasChange ? ', growth in a week 10%' : '') +
-      '. Each is compared with the other ' + PLURAL[S.level] + '. Critical is 75 or more, High 60 to 74, Moderate 40 to 59.</p>' +
+    return '<section class="sec" id="critical"><div class="sec-head"><h2>Top pendency</h2>' +
+      '<p>Top 20 ' + PLURAL[S.level] + ' in order of pending applications; pick a heading to sort another way. The score out of 100 weighs pending count 40%, pending % of registered 25%' + (kind === 'nsc' ? ', completed after 15 days 15%' : '') + ', on hold 10%' + (hasChange ? ', growth in a week 10%' : '') +
+      ', each compared with the other ' + PLURAL[S.level] + ': Critical is 75 or more, High 60 to 74, Moderate 40 to 59.</p>' +
       '<div class="tools">' + levelSel + '</div></div>' +
       '<div class="panel">' + chips + '<div class="tbox" style="margin-top:12px"><table class="t" id="critTable"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
-      (list.length > 25 ? '<div class="more"><button class="linkbtn" id="moreBtn" type="button">' + (S.showAll ? 'Show the first 25' : 'Show all ' + list.length) + '</button></div>' : '') +
+      (list.length > 20 ? '<div class="more"><button class="linkbtn" id="moreBtn" type="button">' + (S.showAll ? 'Show the top 20' : 'Show all ' + list.length) + '</button></div>' : '') +
       (!list.length ? '<p class="empty">No units in this group.</p>' : '') + '</div></section>';
   }
 
@@ -723,7 +723,7 @@
   }
   document.addEventListener('click', function (e) {
     var r = e.target.closest('[data-report]');
-    if (r) { S.report = r.dataset.report; S.showAll = false; S.sev = ''; S.sortKey = 'score'; S.sortDir = -1; render(); return; }
+    if (r) { S.report = r.dataset.report; S.showAll = false; S.sev = ''; S.sortKey = 'pend'; S.sortDir = -1; render(); return; }
     var d = e.target.closest('[data-discom]');
     if (d) { S.discom = d.dataset.discom; S.showAll = false; S.sev = ''; render(); }
   });

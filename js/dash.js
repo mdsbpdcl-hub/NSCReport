@@ -49,7 +49,7 @@
   try { prefs = JSON.parse(recall(PREFS) || '{}') || {}; } catch (e) { prefs = {}; }
   var S = {
     feed: null, model: null,
-    report: REPORTS.indexOf(prefs.report) >= 0 ? prefs.report : REPORTS[0],
+    report: 'NSC 19-59 kW',                     // the page always opens on NSC 19 to 59 kW
     discom: ['ALL', 'NBPDCL', 'SBPDCL'].indexOf(prefs.discom) >= 0 ? prefs.discom : 'ALL',
     level: prefs.level || '', sev: '', sortKey: 'score', sortDir: -1, showAll: false,
     interval: prefs.interval || 'week'
@@ -265,9 +265,9 @@
   function dchip(d) { return '<span class="dchip ' + (d === 'NBPDCL' ? 'n' : 's') + '">' + (d === 'NBPDCL' ? 'N' : 'S') + '</span>'; }
 
   // ================================================================ review points
-  function reviewPoints(discom) {
+  function reviewPoints(discom, only) {
     var pts = [];
-    S.model.reports.forEach(function (rep) {
+    S.model.reports.filter(function (r) { return !only || r === only; }).forEach(function (rep) {
       var rs = scopeRecs(rep, discom); if (!rs.length) return;
       if (discom === 'ALL' && mixedPeriods(rep)) pts.push({ tone: 'c', tag: REPORT_NAME[rep], text: 'NBPDCL and SBPDCL figures cover different periods (' +
         DISCOMS.map(function (d) { var m = periodsOf(rep, d)[0]; return m ? d + ' ' + (kindOfPeriod(m.periodFrom) === 'year' ? 'last 1 year' : 'since ' + nice(m.periodFrom)) : ''; }).filter(Boolean).join(', ') +
@@ -398,9 +398,8 @@
 
     // all reports at once
     var rows = '';
-    S.model.reports.forEach(function (rep) {
+    [S.report].forEach(function (rep) {
       ['ALL'].concat(DISCOMS).forEach(function (d) {
-        if (S.discom !== 'ALL' && d !== S.discom) return;
         var x = sumUp(scopeRecs(rep, d)); if (!x.lines) return;
         var on = rep === S.report && d === S.discom;
         rows += '<tr data-go-report="' + esc(rep) + '" data-go-discom="' + d + '" class="' + (on ? 'on' : '') + '">' +
@@ -417,7 +416,7 @@
       '<div><div class="pipe-lab"><span>Where the pending applications are</span><span>' + n(t.pend) + ' in ' + stages.length + ' stages</span></div>' +
       '<div class="pipe">' + pipe + '</div><div class="pipe-key">' + key + '</div></div></div></div>' +
       '<div class="kpis">' + kpis + '</div>' +
-      '<div class="panel" style="margin-top:16px"><h3>All reports</h3><p class="sub">Pick a line to look at that report.</p><div class="tbox" style="border:0"><table class="matrix"><thead><tr><th>Report</th><th style="text-align:left">Period</th><th>Registered</th><th>Pending</th><th>Pending %</th><th>Done after 15 days</th><th>On hold</th><th>Cancelled %</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
+      '<div class="panel" style="margin-top:16px"><h3>' + esc(REPORT_NAME[S.report]) + ' by DISCOM</h3><p class="sub">Pick a line to look at that DISCOM.</p><div class="tbox" style="border:0"><table class="matrix"><thead><tr><th>Report</th><th style="text-align:left">Period</th><th>Registered</th><th>Pending</th><th>Pending %</th><th>Done after 15 days</th><th>On hold</th><th>Cancelled %</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
       '</section>';
   }
 
@@ -658,15 +657,15 @@
 
   // ---- 7. review points
   function secReview() {
-    var pts = reviewPoints(S.discom);
-    return '<section class="sec" id="review"><div class="sec-head"><h2>Review points</h2><p>Written from the figures for ' + esc(scopeLabel()) + ', across all reports. The same points open the PDF report.</p></div>' +
+    var pts = reviewPoints(S.discom, S.report);
+    return '<section class="sec" id="review"><div class="sec-head"><h2>Review points</h2><p>Written from the ' + esc(REPORT_NAME[S.report]) + ' figures for ' + esc(scopeLabel()) + '. The same points open the PDF report.</p></div>' +
       '<div class="panel"><ul class="points">' + pts.map(function (p) { return '<li class="' + p.tone + '"><div><span class="tag">' + esc(p.tag) + '</span>' + esc(p.text) + '</div></li>'; }).join('') + '</ul></div></section>';
   }
 
   // ---- 8. data gaps
   function secGaps() {
     var rows = '';
-    S.model.reports.forEach(function (rep) {
+    [S.report].forEach(function (rep) {
       DISCOMS.forEach(function (d) {
         if (S.discom !== 'ALL' && d !== S.discom) return;
         var t = sumUp(scopeRecs(rep, d)); if (!t.lines) return;
@@ -682,18 +681,19 @@
 
   // ---- 9. cancellations
   function secCancel() {
-    var rows = S.model.reports.map(function (rep) {
-      var per = DISCOMS.map(function (d) { return [d, sumUp(scopeRecs(rep, d))]; }).filter(function (x) { return x[1].lines && (S.discom === 'ALL' || x[0] === S.discom); });
-      return '<div class="hb"><div class="name"><b>' + esc(REPORT_NAME[rep]) + '</b><span>' + per.map(function (x) { return x[0] + ' ' + pct(ratio(x[1].canc, x[1].reg), 0); }).join(', ') + '</span></div>' +
-        '<div class="track">' + per.map(function (x) { return '<span style="width:' + (100 * (ratio(x[1].canc, x[1].reg) || 0) / per.length) + '%;background:var(--' + (x[0] === 'NBPDCL' ? 'north' : 'south') + ')"></span>'; }).join('') + '</div>' +
-        '<div class="num">' + pct(ratio(per.reduce(function (s, x) { return s + x[1].canc; }, 0), per.reduce(function (s, x) { return s + x[1].reg; }, 0)), 0) + '<small>cancelled</small></div></div>';
-    }).join('');
-    var rep = S.model.reports.indexOf('NSC 19-59 kW') >= 0 ? 'NSC 19-59 kW' : S.report;
+    var rep = S.report;
+    var rows = DISCOMS.map(function (d) { return [d, sumUp(scopeRecs(rep, d))]; }).filter(function (x) { return x[1].lines && (S.discom === 'ALL' || x[0] === S.discom); })
+      .map(function (x) {
+        var p = ratio(x[1].canc, x[1].reg) || 0;
+        return '<div class="hb"><div class="name"><b>' + x[0] + '</b><span>' + n(x[1].canc) + ' of ' + n(x[1].reg) + ' registered</span></div>' +
+          '<div class="track"><span style="width:' + (100 * p) + '%;background:var(--' + (x[0] === 'NBPDCL' ? 'north' : 'south') + ')"></span></div>' +
+          '<div class="num">' + pct(p, 0) + '<small>cancelled</small></div></div>';
+      }).join('');
     var divs = groupBy(scopeRecs(rep, S.discom), 'division').filter(function (u) { return u.reg >= 15; });
     divs.forEach(function (u) { u.pCanc = ratio(u.canc, u.reg); });
     divs.sort(function (a, b) { return b.pCanc - a.pCanc; });
     return '<section class="sec" id="cancel"><div class="sec-head"><h2>Cancellations</h2><p>Share of registered applications that were cancelled. A high share can mean wrong applications, unmet conditions or applications closed to clear pendency; worth checking in review.</p></div>' +
-      '<div class="grid2"><div class="panel"><h3>By report</h3><p class="sub">Bar length: share cancelled</p><div class="hbars">' + rows + '</div></div>' +
+      '<div class="grid2"><div class="panel"><h3>' + esc(REPORT_NAME[rep]) + ' by DISCOM</h3><p class="sub">Bar length: share cancelled</p><div class="hbars">' + rows + '</div></div>' +
       '<div class="panel"><h3>Highest cancellation, ' + esc(REPORT_NAME[rep]) + '</h3><p class="sub">Divisions with 15 or more registered</p>' + barList(divs.slice(0, 10), 'pCanc', function (u) { return n(u.canc) + ' of ' + n(u.reg); }, 'var(--s5)', true) + '</div></div></section>';
   }
 

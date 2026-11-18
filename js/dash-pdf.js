@@ -10,6 +10,7 @@
     var doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
     var W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 12;
     var discom = A.S.discom, scope = discom === 'ALL' ? 'Bihar (NBPDCL and SBPDCL)' : discom;
+    var only = A.S.report, onlyName = A.REPORT_NAME[only];          // the PDF covers the report chosen on the page
     var today = new Date(), MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     var made = today.getDate() + ' ' + MON[today.getMonth()] + ' ' + today.getFullYear();
     var clean = function (s) { return String(s == null ? '' : s).replace(/−/g, '-').replace(/[^\x20-\x7E -ÿ–—‘’“”•]/g, ''); };
@@ -19,15 +20,15 @@
     // ---- cover
     doc.setFillColor.apply(doc, STEEL); doc.rect(0, 0, W, 26, 'F');
     doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
-    doc.text('Top pendency report', M, 12);
+    doc.text('Top pendency report: ' + onlyName, M, 12);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5);
-    doc.text('New service connections and load change requests  |  ' + scope + '  |  Figures as on ' + (A.asOn || '-') + '  |  Prepared on ' + made, M, 20);
+    doc.text(onlyName + '  |  ' + scope + (A.periodText(only, discom) ? '  |  ' + A.periodText(only, discom).replace(/\. Bihar totals.*$/, '') : '') + '  |  Figures as on ' + (A.asOn || '-') + '  |  Prepared on ' + made, M, 20);
 
     var y = 34;
     doc.setTextColor.apply(doc, INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5);
     doc.text('Pendency at a glance', M, y);
     var body = [];
-    A.REPORTS.forEach(function (rep) {
+    [only].forEach(function (rep) {
       (discom === 'ALL' ? ['ALL'].concat(A.DISCOMS) : [discom]).forEach(function (d) {
         var t = A.sumUp(A.scopeRecs(rep, d)); if (!t.lines) return;
         var tr = A.trendRows(rep, d), wk = A.histUnits('week', rep, d), lt = A.histUnits('latest', rep, d), ch = null;
@@ -49,7 +50,7 @@
     if (y > H - 40) { doc.addPage(); y = 18; }
     doc.text('Review points', M, y); y += 6;
     doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-    A.reviewPoints(discom).forEach(function (p) {
+    A.reviewPoints(discom, only).forEach(function (p) {
       var lines = doc.splitTextToSize(clean(p.text), W - 2 * M - 46);
       if (y + lines.length * 4.6 > H - 14) { doc.addPage(); y = 18; }
       doc.setTextColor.apply(doc, SLATE); doc.setFontSize(8.5); doc.text(clean(p.tag), M, y);
@@ -60,7 +61,7 @@
     });
 
     // ---- one part per report
-    A.REPORTS.forEach(function (rep) {
+    [only].forEach(function (rep) {
       var kind = A.kindOf(rep), levels = kind === 'nsc' ? (rep === 'NSC <19 kW' ? ['circle', 'division', 'sub', 'section'] : ['circle', 'division', 'sub']) : ['circle', 'division'];
       levels.forEach(function (lvl, li) {
         var units = A.scored(rep, discom, lvl).filter(function (u) { return u.pend > 0; });
@@ -115,10 +116,10 @@
     var pages = doc.getNumberOfPages();
     for (var i = 1; i <= pages; i++) {
       doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor.apply(doc, SLATE);
-      doc.text('NSC & Load Change Pendency  |  ' + scope + '  |  Figures as on ' + (A.asOn || '-'), M, H - 6);
+      doc.text('Top pendency report: ' + onlyName + '  |  ' + scope + '  |  Figures as on ' + (A.asOn || '-'), M, H - 6);
       doc.text('Page ' + i + ' of ' + pages, W - M, H - 6, { align: 'right' });
     }
-    var file = 'Top_Pendency_Report_' + (discom === 'ALL' ? 'Bihar' : discom) + '_' + String(A.asOn || made).replace(/\s+/g, '-') + '.pdf';
+    var file = 'Top_Pendency_' + onlyName.replace(/[^A-Za-z0-9]+/g, '_') + '_' + (discom === 'ALL' ? 'Bihar' : discom) + '_' + String(A.asOn || made).replace(/\s+/g, '-') + '.pdf';
     doc.save(file);
     return file;
   }

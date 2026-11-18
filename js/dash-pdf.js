@@ -27,7 +27,8 @@
     var topPend = top.reduce(function (s, u) { return s + u.pend; }, 0);
     var hasChange = top.some(function (u) { return u.change !== null; });
     var showDiscom = discom === 'ALL';
-    var above = function (u) { return (u.pPend || 0) > overall; };
+    var FOCUS = 5;                                                  // the top 5 are shaded light orange
+    var top5Pend = top.slice(0, FOCUS).reduce(function (s, u) { return s + u.pend; }, 0);
 
     // ---------------- page 1: the top 20
     header(doc, 'Top ' + top.length + ' ' + lv[1].toLowerCase() + ' by pendency', repName + '  |  ' + scope + (period ? '  |  ' + period : '') + '  |  Figures as on ' + (A.asOn || '-'));
@@ -37,7 +38,7 @@
       ['Pending, ' + (discom === 'ALL' ? 'Bihar' : discom), A.n(total.pend), A.pct(overall) + ' of ' + A.n(total.reg) + ' registered'],
       ['Held by these ' + top.length + ' ' + lv[1].toLowerCase(), A.n(topPend), A.pct(A.ratio(topPend, total.pend)) + ' of all pending'],
       ['Largest', clean(top[0] ? top[0].name : '-'), top[0] ? A.n(top[0].pend) + ' pending, ' + A.pct(top[0].pPend) : ''],
-      ['Above the overall pending %', String(top.filter(above).length) + ' of ' + top.length, 'shaded light orange below']
+      ['Held by the top ' + Math.min(FOCUS, top.length), A.n(top5Pend), A.pct(A.ratio(top5Pend, total.pend)) + ' of all pending']
     ];
     var bw = (W - 2 * M - 3 * 6) / 4, by = 30;
     boxes.forEach(function (b, i) {
@@ -50,12 +51,9 @@
 
     // key
     var ky = by + 26;
-    doc.setFontSize(10);
+    doc.setFont('times', 'normal'); doc.setFontSize(10);
     doc.setFillColor.apply(doc, ORANGE); doc.rect(M, ky - 3.2, 5, 4, 'F');
-    doc.setTextColor.apply(doc, INK); doc.text('Pending % above the overall ' + A.pct(overall), M + 7, ky);
-    var kx = M + 7 + doc.getTextWidth('Pending % above the overall ' + A.pct(overall)) + 10;
-    doc.setFillColor.apply(doc, GREEN); doc.rect(kx, ky - 3.2, 5, 4, 'F');
-    doc.text('At or below the overall ' + A.pct(overall), kx + 7, ky);
+    doc.setTextColor.apply(doc, INK); doc.text('Top ' + Math.min(FOCUS, top.length) + ' by pending', M + 7, ky);
     doc.setTextColor.apply(doc, SLATE);
     doc.text('Ranked by number of pending applications', W - M, ky, { align: 'right' });
 
@@ -74,13 +72,13 @@
     colStyles[barCol] = { cellWidth: 38 };
     doc.autoTable({
       startY: ky + 3, margin: { left: M, right: M, bottom: 13 }, head: [head], body: body, theme: 'plain',
-      styles: { font: 'times', fontSize: 10.5, cellPadding: { top: 0.95, bottom: 0.95, left: 2.2, right: 2.2 }, textColor: INK, lineColor: [255, 255, 255], lineWidth: 0.4, valign: 'middle', overflow: 'ellipsize' },
+      styles: { font: 'times', fontSize: 10.5, cellPadding: { top: 0.95, bottom: 0.95, left: 2.2, right: 2.2 }, textColor: INK, lineColor: LINE, lineWidth: { bottom: 0.2 }, valign: 'middle', overflow: 'ellipsize' },
       headStyles: { font: 'times', fontStyle: 'bold', fontSize: 10, fillColor: HEADFILL, textColor: SLATE, overflow: 'visible' },
       columnStyles: colStyles,
       didParseCell: function (h) {
         if (h.section !== 'body') return;
         var u = top[h.row.index];
-        h.cell.styles.fillColor = above(u) ? ORANGE : GREEN;
+        h.cell.styles.fillColor = h.row.index < FOCUS ? ORANGE : [255, 255, 255];
         if (h.column.index === changeCol && u.change) h.cell.styles.textColor = u.change > 0 ? ORANGE_INK : GREEN_INK;
       },
       didDrawCell: function (h) {
@@ -106,14 +104,14 @@
     for (var c = 2; c < head2.length; c++) cs2[c] = { halign: 'right' };
     doc.autoTable({
       startY: 40, margin: { left: M, right: M, bottom: 13 }, head: [head2], body: body2, theme: 'plain',
-      styles: { font: 'times', fontSize: 10.5, cellPadding: { top: 1.0, bottom: 1.0, left: 2.2, right: 2.2 }, textColor: INK, lineColor: [255, 255, 255], lineWidth: 0.4, overflow: 'ellipsize' },
+      styles: { font: 'times', fontSize: 10.5, cellPadding: { top: 1.0, bottom: 1.0, left: 2.2, right: 2.2 }, textColor: INK, lineColor: LINE, lineWidth: { bottom: 0.2 }, overflow: 'ellipsize' },
       headStyles: { font: 'times', fontStyle: 'bold', fontSize: 10, fillColor: HEADFILL, textColor: SLATE, overflow: 'visible' },
       columnStyles: cs2,
       didParseCell: function (h) {
         if (h.section !== 'body') return;
         if (h.row.index === top.length) { h.cell.styles.fontStyle = 'bold'; h.cell.styles.fillColor = HEADFILL; return; }
         var u = top[h.row.index];
-        h.cell.styles.fillColor = above(u) ? ORANGE : GREEN;
+        h.cell.styles.fillColor = h.row.index < FOCUS ? ORANGE : [255, 255, 255];
         var si = h.column.index - 2;
         if (si >= 0 && si < stages.length) {
           var best = stages.reduce(function (b, s, k) { return (u.st[s[0]] || 0) > (u.st[stages[b][0]] || 0) ? k : b; }, 0);

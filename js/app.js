@@ -8,26 +8,7 @@
   var canPickPlace = typeof window.showSaveFilePicker === 'function';
 
   // ------------------------------------------------------------ colours
-  var THEMES = {
-    sky: ['#2f7df6', '#22c1dc'], mint: ['#0a9b85', '#4eb068'],
-    sunrise: ['#f0752f', '#f7a531'], lavender: ['#7a65c2', '#e27aab']
-  };
-  function alpha(hex, a) {
-    var n = parseInt(hex.slice(1), 16);
-    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
-  }
-  function setTheme(name, keep) {
-    if (!THEMES[name]) name = 'sunrise';
-    var t = THEMES[name], s = document.documentElement.style;
-    s.setProperty('--t1', t[0]); s.setProperty('--t2', t[1]);
-    s.setProperty('--t1a', alpha(t[0], 0.16)); s.setProperty('--t2a', alpha(t[1], 0.14)); s.setProperty('--t1s', alpha(t[0], 0.09));
-    document.querySelectorAll('.dot').forEach(function (d) { d.setAttribute('aria-pressed', String(d.dataset.theme === name)); });
-    if (keep) { try { localStorage.setItem('nscreport-theme', name); } catch (e) { /* the page still works */ } }
-  }
-  var saved = 'sunrise';
-  try { saved = localStorage.getItem('nscreport-theme') || 'sunrise'; } catch (e) { /* ignore */ }
-  setTheme(saved, false);
-  document.querySelectorAll('.dot').forEach(function (d) { d.addEventListener('click', function () { setTheme(d.dataset.theme, true); }); });
+  // colours are fixed (My Dashboard Style, Bihar scope): light orange fills with dark orange writing
 
   $('openDash').href = 'dashboard.html';
   $('doneDash').href = 'dashboard.html';

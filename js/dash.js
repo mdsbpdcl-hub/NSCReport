@@ -32,7 +32,20 @@
     lc: [['circle', 'Circle'], ['division', 'Division']] };
   var PLURAL = { circle: 'circles', division: 'divisions', sub: 'sub-divisions', section: 'sections' };
   var SEV = [['c', 'Critical', 75], ['h', 'High', 60], ['m', 'Moderate', 40], ['l', 'Low', -1]];
-  var SEV_FILL = { c: '#b42318', h: '#b54708', m: '#c9a227', l: '#2b7a4b' };
+  var SEV_FILL = { c: '#86211b', h: '#b8352b', m: '#e3a21a', l: '#22a35a' };
+  // the page colour follows the scope: Bihar light orange, NBPDCL light green, SBPDCL light purple
+  var SCOPE_COLOURS = {
+    ALL: { t1: '#E8894A', t2: '#F5B98C', tl: '#FDEDE0', td: '#8A4513' },
+    NBPDCL: { t1: '#5FAF7E', t2: '#A8D8B9', tl: '#E8F6EE', td: '#1F6B43' },
+    SBPDCL: { t1: '#9A80D2', t2: '#C9B9EC', tl: '#F2EDFB', td: '#4F3A8C' }
+  };
+  function applyScope() {
+    var c = SCOPE_COLOURS[S.discom] || SCOPE_COLOURS.ALL, st = document.documentElement.style;
+    st.setProperty('--t1', c.t1); st.setProperty('--t2', c.t2); st.setProperty('--tl', c.tl); st.setProperty('--td', c.td);
+    var fav = document.querySelector('link[rel="icon"]');
+    if (fav) fav.href = "data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='6' fill='" + c.tl + "' stroke='" + c.t2 + "'/><path d='M13.5 3 5 13.6h6l-1 7.4 9-11.1h-6z' fill='" + c.td + "'/></svg>");
+  }
+  function rgbOf(hex) { var v = parseInt(hex.slice(1), 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; }
 
   var $ = function (id) { return document.getElementById(id); };
   var nf = new Intl.NumberFormat('en-IN');
@@ -323,12 +336,13 @@
     if (S.discom !== 'ALL' && !M.recs.some(function (r) { return r.report === S.report && r.discom === S.discom; })) S.discom = 'ALL';
     var kind = kindOf(S.report), levels = LEVELS[kind].map(function (l) { return l[0]; });
     if (levels.indexOf(S.level) < 0) S.level = kind === 'nsc' ? 'division' : 'division';
+    applyScope();
     renderFilters();
     var html = '';
     html += secGlance() + secStages() + secCritical() + secDelay() + secAgency() + secTrend() + secReview() + secGaps() + secCancel();
     var box = $('content');
     box.innerHTML = html;
-    box.hidden = false; $('state').hidden = true; $('filters').hidden = false;
+    box.hidden = false; $('state').hidden = true; $('filters').hidden = false; $('crumbsRow').hidden = false;
     $('pdfBtn').disabled = false;
     bindContent();
     savePrefs();
@@ -337,10 +351,10 @@
   function renderFilters() {
     var M = S.model;
     $('segReport').innerHTML = M.reports.map(function (r) {
-      return '<button type="button" data-report="' + esc(r) + '" aria-pressed="' + (r === S.report) + '">' + esc(REPORT_NAME[r]) + '</button>';
+      return '<button type="button" role="tab" data-report="' + esc(r) + '" aria-selected="' + (r === S.report) + '">' + esc(REPORT_NAME[r]) + '</button>';
     }).join('');
     var has = {}; M.recs.forEach(function (r) { if (r.report === S.report) has[r.discom] = true; });
-    $('segDiscom').innerHTML = [['ALL', 'Bihar'], ['NBPDCL', 'NBPDCL'], ['SBPDCL', 'SBPDCL']].map(function (d) {
+    $('segDiscom').innerHTML = [['ALL', 'Bihar'], ['SBPDCL', 'SBPDCL'], ['NBPDCL', 'NBPDCL']].map(function (d) {
       var off = d[0] !== 'ALL' && !has[d[0]];
       return '<button type="button" data-discom="' + d[0] + '" aria-pressed="' + (d[0] === S.discom) + '"' + (off ? ' disabled title="No figures for ' + d[0] + ' in this report"' : '') + '>' + d[1] + '</button>';
     }).join('');
@@ -353,6 +367,9 @@
     var secs = [['glance', 'At a glance'], ['stages', 'Stages'], ['critical', 'Top pendency'], ['delay', 'Delay'],
       ['agency', kindOf(S.report) === 'lc' ? 'Agencies' : 'AMISP'], ['trend', 'Trend'], ['review', 'Review points'], ['gaps', 'Data gaps'], ['cancel', 'Cancellations']];
     $('jump').innerHTML = secs.map(function (s) { return '<a href="#' + s[0] + '">' + s[1] + '</a>'; }).join('');
+    var dateTxt = S.feed.asOn ? 'Figures as on ' + nice(S.feed.asOn) : '';
+    $('crumbs').innerHTML = (S.discom === 'ALL' ? '<span class="here">Bihar</span>' : '<a data-discom="ALL">Bihar</a><span class="sep">&rsaquo;</span><span class="here">' + S.discom + '</span>') +
+      '<span class="sep">&rsaquo;</span><span class="here">' + esc(REPORT_NAME[S.report]) + '</span>' + (dateTxt ? '<span class="datechip">' + dateTxt + '</span>' : '');
   }
 
   function sinceText() {
@@ -376,7 +393,7 @@
       var then = tr.filter(function (x) { return x.date === wk.date; })[0];
       if (then) {
         var d = t.pend - then.pend, per = { day: 'since the previous update', week: 'in a week', month: 'in a month' }[S.interval];
-        delta = '<span class="delta ' + (d > 0 ? 'up' : d < 0 ? 'down' : 'flat') + '">' + (d > 0 ? '▲ ' : d < 0 ? '▼ ' : '') + signed(d) + ' ' + per + '</span>';
+        delta = '<span class="chip-s ' + (d > 0 ? 'up' : d < 0 ? 'down' : 'flat') + '">' + (d > 0 ? '\u25B2 ' : d < 0 ? '\u25BC ' : '') + signed(d) + ' ' + per + '</span>';
       }
     }
     var stages = stagesOf(S.report);
@@ -388,14 +405,28 @@
       var v = t.st[s[0]] || 0;
       return '<div class="key"><i style="background:' + STAGE_COLOURS[i] + '"></i><span>' + esc(s[1]) + '</span><span class="v">' + n(v) + '<span class="p">' + pct(ratio(v, t.pend), 0) + '</span></span></div>';
     }).join('');
+    var IC = {
+      reg: '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>',
+      done: '<svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>',
+      fast: '<svg viewBox="0 0 24 24"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61 1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.96 8.96 0 0 0 12 4a9 9 0 1 0 9 9c0-2.12-.74-4.07-1.97-5.61zM12 20a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/></svg>',
+      meter: '<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm1-13h-2v6l5.2 3.2.8-1.3-4-2.4V7z"/></svg>',
+      hold: '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>',
+      canc: '<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm5 13.6L15.6 17 12 13.4 8.4 17 7 15.6 10.6 12 7 8.4 8.4 7 12 10.6 15.6 7 17 8.4 13.4 12 17 15.6z"/></svg>',
+      gap: '<svg viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>'
+    };
     var kpis = [
-      ['Registered', n(t.reg), sinceText()],
-      [kind === 'nsc' ? 'Completed' : 'Service released', n(t.done), pct(ratio(t.done, t.reg)) + ' of registered'],
-      kind === 'nsc' ? ['Completed within 15 days', pct(ratio(t.in15, t.done)), n(t.in15) + ' of ' + n(t.done)] : ['Waiting for meter', n((t.st.wo || 0) + (t.st.meter || 0)), 'work order + installation'],
-      ['On hold', n(t.hold), pct(ratio(t.hold, t.pend)) + ' of pending'],
-      ['Cancelled', n(t.canc), pct(ratio(t.canc, t.reg)) + ' of registered']
-    ].map(function (k) { return '<div class="kpi"><div class="lab">' + k[0] + '</div><div class="val">' + k[1] + '</div><div class="note">' + k[2] + '</div></div>'; }).join('');
-
+      ['Registered', n(t.reg), sinceText(), '#2f6db5', IC.reg],
+      [kind === 'nsc' ? 'Completed' : 'Service released', n(t.done), pct(ratio(t.done, t.reg)) + ' of registered', '#2e8b57', IC.done],
+      kind === 'nsc' ? ['Completed within 15 days', pct(ratio(t.in15, t.done)), n(t.in15) + ' of ' + n(t.done) + ' completed', '#0f9f8f', IC.fast]
+        : ['Waiting for meter', n((t.st.wo || 0) + (t.st.meter || 0)), 'work order and installation', '#0f9f8f', IC.meter],
+      ['On hold', n(t.hold), pct(ratio(t.hold, t.pend)) + ' of pending', '#C9A227', IC.hold],
+      ['Cancelled', n(t.canc), pct(ratio(t.canc, t.reg)) + ' of registered', '#7a65c2', IC.canc],
+      ['Under no status', n(t.gap), pct(ratio(t.gap, t.reg)) + ' of registered', '#c0392b', IC.gap]
+    ].map(function (k) {
+      return '<div class="kpi" style="--kc:' + k[3] + '"><span class="ico" aria-hidden="true">' + k[4] + '</span><div class="lab">' + k[0] + '</div><div class="val fig">' + k[1] + '</div><div class="note">' + k[2] + '</div></div>';
+    }).join('');
+    var p = Math.max(0, Math.min(1, ratio(t.pend, t.reg) || 0));
+    var meter = meterSvg(p);
     // all reports at once
     var rows = '';
     [S.report].forEach(function (rep) {
@@ -410,14 +441,30 @@
       });
     });
     return '<section class="sec" id="glance" style="margin-top:4px">' +
-      '<div class="panel"><div class="hero"><div class="hero-num"><div class="lab">' + esc(REPORT_NAME[S.report]) + ' pending, ' + esc(scopeLabel()) + '</div>' +
-      '<div class="big">' + n(t.pend) + '</div><div class="ctx"><b>' + pct(ratio(t.pend, t.reg)) + '</b> of ' + n(t.reg) + ' registered</div>' +
-      (periodText(S.report, S.discom) ? '<div class="period' + (S.discom === 'ALL' && mixedPeriods(S.report) ? ' mixwarn' : '') + '">' + esc(periodText(S.report, S.discom)) + '</div>' : '') + delta + '</div>' +
+      '<div class="panel"><div class="hero"><div class="meter">' + meter +
+      '<div class="lab">' + esc(REPORT_NAME[S.report]) + ' pending, ' + esc(scopeLabel()) + '</div>' +
+      '<div class="big fig">' + n(t.pend) + '</div>' +
+      '<div class="chips"><span class="chip-s scope">' + pct(ratio(t.pend, t.reg)) + ' of ' + n(t.reg) + ' registered</span>' + delta + '</div>' +
+      (periodText(S.report, S.discom) ? '<div class="period' + (S.discom === 'ALL' && mixedPeriods(S.report) ? ' mixwarn' : '') + '">' + esc(periodText(S.report, S.discom)) + '</div>' : '') + '</div>' +
       '<div><div class="pipe-lab"><span>Where the pending applications are</span><span>' + n(t.pend) + ' in ' + stages.length + ' stages</span></div>' +
       '<div class="pipe">' + pipe + '</div><div class="pipe-key">' + key + '</div></div></div></div>' +
       '<div class="kpis">' + kpis + '</div>' +
-      '<div class="panel" style="margin-top:16px"><h3>' + esc(REPORT_NAME[S.report]) + ' by DISCOM</h3><p class="sub">Pick a line to look at that DISCOM.</p><div class="tbox" style="border:0"><table class="matrix"><thead><tr><th>Report</th><th style="text-align:left">Period</th><th>Registered</th><th>Pending</th><th>Pending %</th><th>Done after 15 days</th><th>On hold</th><th>Cancelled %</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
+      '<div class="panel" style="margin-top:16px"><h3>' + esc(REPORT_NAME[S.report]) + ' by DISCOM</h3><p class="sub">Pick a line to look at that DISCOM.</p><div class="tbox" style="border:0"><table class="matrix"><thead><tr><th>Report</th><th class="l">Period</th><th>Registered</th><th>Pending</th><th>Pending %</th><th>Done after 15 days</th><th>On hold</th><th>Cancelled %</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
       '</section>';
+  }
+
+  // half-circle meter: pending as a share of registered, 0 to 100%
+  function meterSvg(p) {
+    var cx = 150, cy = 140, r = 112;
+    function pt(f, rad) { var a = Math.PI * (1 - f); return [cx + rad * Math.cos(a), cy - rad * Math.sin(a)]; }
+    var a0 = pt(0, r), a1 = pt(1, r), ap = pt(Math.max(0.001, p), r);
+    var ticks = [0, 0.25, 0.5, 0.75, 1].map(function (f) {
+      var q = pt(f, r + 22); return '<text class="tick" x="' + q[0].toFixed(1) + '" y="' + (q[1] + 4).toFixed(1) + '" text-anchor="middle">' + Math.round(f * 100) + '%</text>';
+    }).join('');
+    return '<svg viewBox="0 0 300 160" role="img" aria-label="Pending ' + pct(p) + ' of registered">' +
+      '<defs><linearGradient id="meterGrad" x1="0" x2="1" y1="0" y2="0"><stop offset="0" style="stop-color:var(--t2)"/><stop offset="1" style="stop-color:var(--t1)"/></linearGradient></defs>' +
+      '<path class="trk" d="M' + a0[0] + ',' + a0[1] + ' A' + r + ',' + r + ' 0 0 1 ' + a1[0] + ',' + a1[1] + '"/>' +
+      '<path class="arc" d="M' + a0[0] + ',' + a0[1] + ' A' + r + ',' + r + ' 0 0 1 ' + ap[0].toFixed(2) + ',' + ap[1].toFixed(2) + '"/>' + ticks + '</svg>';
   }
 
   // ---- 2. stages
@@ -443,8 +490,8 @@
     var heat = '<table class="heat"><thead><tr><th class="l">Circle</th>' + stages.map(function (s) { return '<th title="' + esc(s[1]) + '">' + esc(shortStage(s[1])) + '</th>'; }).join('') + '<th>Pending</th></tr></thead><tbody>' +
       circles.map(function (c) {
         return '<tr><td class="l">' + esc(c.name) + (S.discom === 'ALL' ? dchip(c.discom) : '') + '</td>' + stages.map(function (s) {
-          var v = c.st[s[0]] || 0, a = cellMax ? Math.sqrt(v / cellMax) : 0;
-          return '<td style="background:rgba(31,92,153,' + (0.06 + 0.8 * a).toFixed(3) + ');color:' + (a > 0.55 ? '#fff' : 'var(--ink)') + '" data-tip="' + esc(c.name + ', ' + s[1] + ': ' + n(v)) + '">' + n(v) + '</td>';
+          var v = c.st[s[0]] || 0, a = cellMax ? Math.sqrt(v / cellMax) : 0, rgb = rgbOf((SCOPE_COLOURS[S.discom] || SCOPE_COLOURS.ALL).t1);
+          return '<td style="background:rgba(' + rgb.join(',') + ',' + (0.06 + 0.62 * a).toFixed(3) + ');color:' + (a > 0.6 ? 'var(--td)' : 'var(--ink)') + '" data-tip="' + esc(c.name + ', ' + s[1] + ': ' + n(v)) + '">' + n(v) + '</td>';
         }).join('') + '<td><b>' + n(c.pend) + '</b></td></tr>';
       }).join('') + '</tbody></table>';
     return '<section class="sec" id="stages"><div class="sec-head"><h2>Where cases are stuck</h2><p>Pending applications by stage, and the office that usually has to act.</p></div>' +
@@ -486,17 +533,21 @@
       var cells = { rank: '<span class="rk">' + u.rank + '</span>', name: '<span class="unit"><b>' + esc(u.name) + '</b>' + (S.discom === 'ALL' ? dchip(u.discom) : '') + '<span>' + esc(u.context || u.discom) + '</span></span>',
         sev: sevChip(u.sev), score: sbar, pend: '<b>' + n(u.pend) + '</b>', pPend: pct(u.pPend), pLate: pct(u.pLate), hold: n(u.hold), topStage: esc(u.topStage),
         change: u.change === null ? '-' : '<span class="' + (u.change > 0 ? 'up' : u.change < 0 ? 'down' : '') + '">' + signed(u.change) + '</span>' };
-      return '<tr>' + cols.map(function (c) { return '<td class="' + (c[2] === 'l' ? 'l' : '') + '">' + cells[c[0]] + '</td>'; }).join('') + '</tr>';
+      return '<tr class="' + (u.rank <= 5 ? 'top5' : '') + '">' + cols.map(function (c) { return '<td class="' + (c[2] === 'l' ? 'l' : '') + '">' + cells[c[0]] + '</td>'; }).join('') + '</tr>';
     }).join('');
     var levelSel = '<span class="selectwrap"><select id="levelSel" aria-label="Level">' + LEVELS[kind].map(function (l) {
       return '<option value="' + l[0] + '"' + (l[0] === S.level ? ' selected' : '') + '>By ' + l[1].toLowerCase() + '</option>'; }).join('') + '</select></span>';
+    var SORTS = [['pend', -1, 'Most pending'], ['pPend', -1, 'Highest pending %'], ['hold', -1, 'Most on hold'], ['score', -1, 'Highest score'], ['name', 1, 'A to Z']];
+    var sortPills = '<div class="chips" style="margin-bottom:10px">' + SORTS.map(function (x) {
+      return '<button type="button" class="chip" data-sortpill="' + x[0] + '" data-dir="' + x[1] + '" aria-pressed="' + (S.sortKey === x[0] && S.sortDir === x[1]) + '">' + x[2] + '</button>';
+    }).join('') + '</div>';
     var chips = '<div class="chips">' + [['', 'All', units.length]].concat(SEV.map(function (s) { return [s[0], s[1], counts[s[0]]]; })).map(function (c) {
       return '<button type="button" class="chip" data-sev="' + c[0] + '" aria-pressed="' + (S.sev === c[0]) + '">' + c[1] + '<b>' + c[2] + '</b></button>'; }).join('') + '</div>';
     return '<section class="sec" id="critical"><div class="sec-head"><h2>Top pendency</h2>' +
       '<p>Top 20 ' + PLURAL[S.level] + ' in order of pending applications; pick a heading to sort another way. The score out of 100 weighs pending count 40%, pending % of registered 25%' + (kind === 'nsc' ? ', completed after 15 days 15%' : '') + ', on hold 10%' + (hasChange ? ', growth in a week 10%' : '') +
       ', each compared with the other ' + PLURAL[S.level] + ': Critical is 75 or more, High 60 to 74, Moderate 40 to 59.</p>' +
       '<div class="tools">' + levelSel + '</div></div>' +
-      '<div class="panel">' + chips + '<div class="tbox" style="margin-top:12px"><table class="t" id="critTable"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+      '<div class="panel">' + sortPills + chips + '<div class="tbox" style="margin-top:12px"><table class="t" id="critTable"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
       (list.length > 20 ? '<div class="more"><button class="linkbtn" id="moreBtn" type="button">' + (S.showAll ? 'Show the top 20' : 'Show all ' + list.length) + '</button></div>' : '') +
       (!list.length ? '<p class="empty">No units in this group.</p>' : '') + '</div></section>';
   }
@@ -509,25 +560,25 @@
       var hold = units.slice().sort(function (a, b) { return b.hold - a.hold; }).slice(0, 10);
       var meter = units.map(function (u) { u.waitMeter = (u.st.wo || 0) + (u.st.meter || 0); return u; }).sort(function (a, b) { return b.waitMeter - a.waitMeter; }).slice(0, 10);
       return '<section class="sec" id="delay"><div class="sec-head"><h2>Delay</h2><p>The load change report gives no completion time, so delay is shown through cases on hold and cases waiting for a meter.</p></div>' +
-        '<div class="grid2"><div class="panel"><h3>Most cases on hold</h3><p class="sub">Divisions</p>' + barList(hold, 'hold', function (u) { return pct(ratio(u.hold, u.pend), 0) + ' of its pending'; }, 'var(--high)') + '</div>' +
-        '<div class="panel"><h3>Most cases waiting for a meter</h3><p class="sub">Work order plus meter installation, divisions</p>' + barList(meter, 'waitMeter', function (u) { return pct(ratio(u.waitMeter, u.pend), 0) + ' of its pending'; }, 'var(--steel)') + '</div></div></section>';
+        '<div class="grid2"><div class="panel"><h3>Most cases on hold</h3><p class="sub">Divisions</p>' + barList(hold, 'hold', function (u) { return pct(ratio(u.hold, u.pend), 0) + ' of its pending'; }, '#e3a21a') + '</div>' +
+        '<div class="panel"><h3>Most cases waiting for a meter</h3><p class="sub">Work order plus meter installation, divisions</p>' + barList(meter, 'waitMeter', function (u) { return pct(ratio(u.waitMeter, u.pend), 0) + ' of its pending'; }, 'var(--t1)') + '</div></div></section>';
     }
     var per = DISCOMS.map(function (d) { return [d, sumUp(scopeRecs(S.report, d))]; }).filter(function (x) { return x[1].lines; });
     var split = per.map(function (x) {
       var t = x[1], a = ratio(t.in15, t.done) || 0;
       return '<div class="hb"><div class="name"><b>' + x[0] + '</b><span>' + n(t.done) + ' completed</span></div><div class="track">' +
-        '<span style="width:' + (a * 100) + '%;background:var(--low)" data-tip="Within 15 days: ' + n(t.in15) + '"></span><span style="width:' + ((1 - a) * 100) + '%;background:var(--crit)" data-tip="After 15 days: ' + n(t.out15) + '"></span></div>' +
+        '<span style="width:' + (a * 100) + '%;background:#22a35a" data-tip="Within 15 days: ' + n(t.in15) + '"></span><span style="width:' + ((1 - a) * 100) + '%;background:#df4b3f" data-tip="After 15 days: ' + n(t.out15) + '"></span></div>' +
         '<div class="num">' + pct(1 - a, 0) + '<small>after 15 days</small></div></div>';
     }).join('');
     var divs = scored(S.report, S.discom, 'division').filter(function (u) { return u.done >= 20; });
     var slow = divs.slice().sort(function (a, b) { return (b.pLate || 0) - (a.pLate || 0); }).slice(0, 10);
     var subs = scored(S.report, S.discom, 'sub').filter(function (u) { return u.pend > 0; }).sort(function (a, b) { return b.hold - a.hold; }).slice(0, 10);
     return '<section class="sec" id="delay"><div class="sec-head"><h2>Delay</h2><p>The time limit used here is 15 days from registration to completion. Pending applications have no dates in the source report, so their age cannot be shown; the trend below shows whether pendency is growing.</p></div>' +
-      '<div class="panel"><div class="legend"><span><i style="background:var(--low)"></i>Completed within 15 days</span><span><i style="background:var(--crit)"></i>Completed after 15 days</span></div><div class="hbars">' + split + '</div></div>' +
+      '<div class="panel"><div class="legend"><span><i style="background:#22a35a"></i>Completed within 15 days</span><span><i style="background:#df4b3f"></i>Completed after 15 days</span></div><div class="hbars">' + split + '</div></div>' +
       '<div class="grid2" style="margin-top:16px"><div class="panel"><h3>Slowest divisions</h3><p class="sub">Share of completed connections that took more than 15 days (divisions with 20 or more completed)</p>' +
-      barList(slow, 'pLate', function (u) { return n(u.out15) + ' of ' + n(u.done); }, 'var(--crit)', true) + '</div>' +
+      barList(slow, 'pLate', function (u) { return n(u.out15) + ' of ' + n(u.done); }, '#df4b3f', true) + '</div>' +
       '<div class="panel"><h3>Most applications on hold</h3><p class="sub">Sub-divisions, at document verification or site inspection</p>' +
-      barList(subs, 'hold', function (u) { return pct(ratio(u.hold, u.pend), 0) + ' of its pending'; }, 'var(--high)') + '</div></div></section>';
+      barList(subs, 'hold', function (u) { return pct(ratio(u.hold, u.pend), 0) + ' of its pending'; }, '#e3a21a') + '</div></div></section>';
   }
   function barList(units, key, note, colour, isPct) {
     if (!units.length || !units.some(function (u) { return u[key]; })) return '<p class="empty">Nothing to show.</p>';
@@ -562,7 +613,7 @@
     circles.forEach(function (c) { c.amisp = c.st.amisp; });
     var t = sumUp(scopeRecs(S.report, S.discom));
     return '<section class="sec" id="agency"><div class="sec-head"><h2>Waiting at AMISP</h2><p>Applications that have passed the DISCOM stages and wait for the smart meter agency to fix the meter: ' + n(t.st.amisp || 0) + ', ' + pct(ratio(t.st.amisp || 0, t.pend), 0) + ' of pending.</p></div>' +
-      '<div class="panel"><h3>By circle</h3><p class="sub">Most waiting first</p>' + barList(circles.slice(0, 15), 'amisp', function (c) { return pct(ratio(c.amisp, c.pend), 0) + ' of its pending'; }, 'var(--s4)') + '</div></section>';
+      '<div class="panel"><h3>By circle</h3><p class="sub">Most waiting first</p>' + barList(circles.slice(0, 15), 'amisp', function (c) { return pct(ratio(c.amisp, c.pend), 0) + ' of its pending'; }, 'var(--t1)') + '</div></section>';
   }
 
   // ---- 6. trend
@@ -592,8 +643,8 @@
       movers = '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="kpi"><div class="lab">Compared with</div><div class="val" style="font-size:18px">' + fmtDate(prev.date) + '</div><div class="note">latest ' + fmtDate(now.date) + '</div></div>' +
         '<div class="kpi"><div class="lab">Pending rose in ' + PLURAL[lvl] + '</div><div class="val up">+' + n(added) + '</div><div class="note">' + units.filter(function (u) { return u.mv > 0; }).length + ' of ' + units.length + ' ' + PLURAL[lvl] + '</div></div>' +
         '<div class="kpi"><div class="lab">Pending fell in ' + PLURAL[lvl] + '</div><div class="val down">−' + n(cleared) + '</div><div class="note">' + units.filter(function (u) { return u.mv < 0; }).length + ' of ' + units.length + ' ' + PLURAL[lvl] + '</div></div></div>' +
-        '<div class="grid2" style="margin-top:16px"><div class="panel"><h3>Pendency growing fastest</h3><p class="sub">' + title(PLURAL[lvl]) + ', change in pending</p>' + barList(up, 'mvAbs', function (u) { return 'now ' + n(u.pend); }, 'var(--crit)') + '</div>' +
-        '<div class="panel"><h3>Most improved</h3><p class="sub">' + title(PLURAL[lvl]) + ', fall in pending</p>' + barList(down, 'mvAbs', function (u) { return 'now ' + n(u.pend); }, 'var(--low)') + '</div></div>';
+        '<div class="grid2" style="margin-top:16px"><div class="panel"><h3>Pendency growing fastest</h3><p class="sub">' + title(PLURAL[lvl]) + ', change in pending</p>' + barList(up, 'mvAbs', function (u) { return 'now ' + n(u.pend); }, '#df4b3f') + '</div>' +
+        '<div class="panel"><h3>Most improved</h3><p class="sub">' + title(PLURAL[lvl]) + ', fall in pending</p>' + barList(down, 'mvAbs', function (u) { return 'now ' + n(u.pend); }, '#22a35a') + '</div></div>';
     }
     var winNote = periodKind(S.report, S.discom) === 'year' && !(S.discom === 'ALL' && mixedPeriods(S.report))
       ? ' In the last-1-year view pending can also fall because applications older than a year leave the window.' : '';
@@ -631,9 +682,9 @@
     pts.forEach(function (p, i) { if (i % step === 0 || i === pts.length - 1) g += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + shortDate(p.label) + '</text>'; });
     var path = pts.map(function (p, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(p.v).toFixed(1); }).join('');
     var area = path + 'L' + x(pts.length - 1) + ',' + (H - B) + 'L' + x(0) + ',' + (H - B) + 'Z';
-    var dots = pts.map(function (p, i) { return '<circle class="pt" cx="' + x(i) + '" cy="' + y(p.v) + '" r="' + (pts.length > 40 ? 2.5 : 4) + '" fill="var(--steel)" data-tip="' + esc(fmtDate(p.label) + ': ' + n(p.v) + ' pending') + '"/>'; }).join('');
+    var dots = pts.map(function (p, i) { return '<circle class="pt" cx="' + x(i) + '" cy="' + y(p.v) + '" r="' + (pts.length > 40 ? 2.5 : 4) + '" style="fill:var(--t1)" data-tip="' + esc(fmtDate(p.label) + ': ' + n(p.v) + ' pending') + '"/>'; }).join('');
     return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Pending over time">' + g +
-      '<path d="' + area + '" fill="rgba(31,92,153,.08)"/><path class="ln" d="' + path + '" stroke="var(--steel)"/>' + dots + '</svg>';
+      '<path d="' + area + '" style="fill:var(--tl)" opacity=".7"/><path class="ln" d="' + path + '" style="stroke:var(--t1)"/>' + dots + '</svg>';
   }
   function barChart(pts) {
     var W = 560, H = 220, L = 52, R = 8, T = 12, B = 28;
@@ -643,7 +694,7 @@
     var step = Math.ceil(pts.length / 6);
     pts.forEach(function (p, i) {
       var h = (H - T - B) * p.v / max, xx = L + i * bw + bw * 0.18;
-      g += '<rect class="bar" x="' + xx.toFixed(1) + '" y="' + (H - B - h).toFixed(1) + '" width="' + Math.max(2, bw * 0.64).toFixed(1) + '" height="' + Math.max(0, h).toFixed(1) + '" fill="#7aa3cf" data-tip="' + esc(fmtDate(p.label) + ': ' + p.tip) + '"/>';
+      g += '<rect class="bar" x="' + xx.toFixed(1) + '" y="' + (H - B - h).toFixed(1) + '" width="' + Math.max(2, bw * 0.64).toFixed(1) + '" height="' + Math.max(0, h).toFixed(1) + '" style="fill:var(--t2)" data-tip="' + esc(fmtDate(p.label) + ': ' + p.tip) + '"/>';
       if (i % step === 0 || i === pts.length - 1) g += '<text x="' + (L + i * bw + bw / 2) + '" y="' + (H - 8) + '" text-anchor="middle">' + shortDate(p.label) + '</text>';
     });
     return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="New registrations">' + g + '</svg>';
@@ -694,7 +745,7 @@
     divs.sort(function (a, b) { return b.pCanc - a.pCanc; });
     return '<section class="sec" id="cancel"><div class="sec-head"><h2>Cancellations</h2><p>Share of registered applications that were cancelled. A high share can mean wrong applications, unmet conditions or applications closed to clear pendency; worth checking in review.</p></div>' +
       '<div class="grid2"><div class="panel"><h3>' + esc(REPORT_NAME[rep]) + ' by DISCOM</h3><p class="sub">Bar length: share cancelled</p><div class="hbars">' + rows + '</div></div>' +
-      '<div class="panel"><h3>Highest cancellation, ' + esc(REPORT_NAME[rep]) + '</h3><p class="sub">Divisions with 15 or more registered</p>' + barList(divs.slice(0, 10), 'pCanc', function (u) { return n(u.canc) + ' of ' + n(u.reg); }, 'var(--s5)', true) + '</div></div></section>';
+      '<div class="panel"><h3>Highest cancellation, ' + esc(REPORT_NAME[rep]) + '</h3><p class="sub">Divisions with 15 or more registered</p>' + barList(divs.slice(0, 10), 'pCanc', function (u) { return n(u.canc) + ' of ' + n(u.reg); }, '#8a7cbf', true) + '</div></div></section>';
   }
 
   // ================================================================ events
@@ -711,6 +762,9 @@
         if (S.sortKey === k) S.sortDir = -S.sortDir; else { S.sortKey = k; S.sortDir = (k === 'name' || k === 'topStage' || k === 'rank') ? 1 : -1; }
         keepPlace('critical', render);
       });
+    });
+    box.querySelectorAll('[data-sortpill]').forEach(function (b) {
+      b.addEventListener('click', function () { S.sortKey = b.dataset.sortpill; S.sortDir = Number(b.dataset.dir); keepPlace('critical', render); });
     });
     var more = $('moreBtn'); if (more) more.addEventListener('click', function () { S.showAll = !S.showAll; keepPlace('critical', render); });
     box.querySelectorAll('[data-interval]').forEach(function (b) { b.addEventListener('click', function () { S.interval = b.dataset.interval; keepPlace('trend', render); }); });
@@ -756,7 +810,7 @@
   function apply(feed, fromStore) {
     S.feed = feed; S.model = buildModel(feed);
     if (!S.model.recs.length) { showState('empty'); return; }
-    $('asOf').textContent = 'Figures as on ' + (feed.asOn || '-') + '  |  NBPDCL and SBPDCL';
+    $('asOf').textContent = feed.asOn ? 'As on ' + nice(feed.asOn) : 'NBPDCL and SBPDCL';
     render();
     if (fromStore) setFresh('Checking for newer figures', true); else setFresh('', false);
   }
@@ -782,9 +836,13 @@
       })
       .then(function () { clearTimeout(timer); loading = false; $('refreshBtn').disabled = false; });
   }
-  function toast(text) {
-    var t = document.createElement('div'); t.className = 'toast'; t.textContent = text; document.body.appendChild(t);
-    setTimeout(function () { t.remove(); }, 2200);
+  function toast(text, openUrl) {
+    document.querySelectorAll('.toast').forEach(function (x) { x.remove(); });
+    var t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status');
+    var sp = document.createElement('span'); sp.textContent = text; t.appendChild(sp);
+    if (openUrl) { var a = document.createElement('a'); a.href = openUrl; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Open the PDF'; t.appendChild(a); }
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, openUrl ? 9000 : 2600);
   }
   $('refreshBtn').addEventListener('click', function () { load(true); });
 
@@ -816,8 +874,11 @@
     var btn = $('pdfBtn'), label = btn.querySelector('span').textContent;
     btn.disabled = true; btn.querySelector('span').textContent = 'Preparing the PDF';
     var ready = window.NSCPdf ? Promise.resolve() : loadScript('js/vendor/jspdf.umd.min.js').then(function () { return loadScript('js/vendor/jspdf.plugin.autotable.min.js'); }).then(function () { return loadScript('js/dash-pdf.js'); });
-    ready.then(function () { window.NSCPdf.make(api(), level); })
-      .catch(function () { toast('The PDF could not be made. Check the connection and try again.'); })
+    ready.then(function () {
+      var out = window.NSCPdf.make(api(), level);
+      if (out && out.url) toast('PDF downloaded: ' + out.file, out.url);
+    })
+      .catch(function () { toast('Could not make the PDF: check the internet connection and try again.'); })
       .then(function () { pdfBusy = false; btn.disabled = false; btn.querySelector('span').textContent = label; });
   });
   function api() {
